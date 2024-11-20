@@ -8,7 +8,6 @@
 #include <iostream>
 #include <vector>
 
-
 #define MAX_FPS_SAMPLES 256
 
 // Resizing of teh window's callback
@@ -94,7 +93,7 @@ int main()
         sampleIndex = (sampleIndex + 1) % MAX_FPS_SAMPLES;
 
         // Creating new ImGui window
-        ImGui::Begin("ImGui pannel");
+        ImGui::Begin("Info pannel");
 
         ImGui::Text("FPS: %.3f", fps);
 

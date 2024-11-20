@@ -20,7 +20,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glfw)
 
-# ImGui
+# ImGui - 1.91.1
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
@@ -40,7 +40,7 @@ if(NOT imgui_POPULATED)
   target_link_libraries(imgui PRIVATE glfw)
 endif()
 
-# Glad - thirdparty
+# Glad - 0.1.36
 add_library(glad STATIC 
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad/src/glad.c
 )
@@ -49,7 +49,7 @@ target_include_directories(glad PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad/include/KHR
 )
 
-# Eigen
+# Eigen - 3.4.0
 FetchContent_Declare(
     eigen
     GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
@@ -64,9 +64,14 @@ endif()
 # OpenGL
 find_package(OpenGL REQUIRED)
 
-# Define el ejecutable de tu proyecto, los archivos fuente y de cabecera
-file(GLOB PROJECT_SOURCES src/*.cpp)
-file(GLOB PROJECT_HEADERS src/*.h)
+# Adding source code and headers
+
+set(SOURCE_DIR ${CMAKE_SOURCE_DIR}/src)
+file(GLOB_RECURSE PROJECT_SOURCES "${SOURCE_DIR}/graphics/*.cpp" "${SOURCE_DIR}/physics/*.cpp")
+file(GLOB_RECURSE PROJECT_HEADERS "${SOURCE_DIR}/graphics/*.h" "${SOURCE_DIR}/physics/*.h" "${SOURCE_DIR}/support/*.h")
+
+list(APPEND PROJECT_SOURCES "${SOURCE_DIR}/main.cpp")
+
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES} ${PROJECT_HEADERS})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE 
