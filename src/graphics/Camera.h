@@ -1,10 +1,9 @@
 #ifndef CAMERA_H
 #define CAMERA_H
-
-#include <Eigen/Geometry>
 #include <glad/glad.h>
 
-#include "GPUhelper.h"
+#include "GLADhelper.h"
+#include "../support/math_helper.h"
 
 class Transform
 {
