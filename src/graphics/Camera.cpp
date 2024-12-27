@@ -1,230 +1,93 @@
+// Camera.cpp
 #include "Camera.h"
 
+#include "../support/Common.h"
+
+// Constructor con valores por defecto
 Camera::Camera()
-	:_ViewIsUpToDate(false), _ProjIsUpToDate(false)
-{
-	_ViewMatrix.setIdentity();
-    _FovY = M_PI / 3.;
-    _Near = 1.;
-    _Far = 50000.;
-
-    _VPx = 0;
-    _VPy = 0;
-
-    SetPosition(Vector3f::Constant(100.));
-    SetTarget(Vector3f::Zero());
-}
-
-Camera::Camera(const Camera& other)
-{
-    *this = other;
-}
-
-Camera& Camera::operator=(const Camera& other)
-{
-    _ViewIsUpToDate = false;
-    _ProjIsUpToDate = false;
-
-    _VPx = other._VPx;
-    _VPy = other._VPy;
-    _VPwidth = other._VPwidth;
-    _VPheight = other._VPheight;
-
-    _Target = other._Target;
-    _FovY = other._FovY;
-    _Near = other._Near;
-    _Far = other._Far;
-
-    _ViewMatrix = other._ViewMatrix;
-    _ProjectionMatrix = other._ProjectionMatrix;
-
-    return *this;
-}
-
-Camera::~Camera()
-{
-    return;
-}
-
-void Camera::SetViewPort(uint offsetX, uint offsetY, uint width, uint height)
-{
-    _VPx = offsetX;
-    _VPy = offsetY;
-    _VPwidth = width;
-    _VPheight = height;
-
-    _ProjIsUpToDate = false;
-}
-
-void Camera::SetViewPort(uint width, uint height)
-{
-    _VPwidth = width;
-    _VPheight = height;
-
-    _ProjIsUpToDate = false;
-}
-
-void Camera::SetFovY(float value)
-{
-    _FovY = value;
-
-    _ProjIsUpToDate = false;
-}
-
-// rename forward (?)
-Vector3f Camera::Direction(void) const
-{
-    return -(Rotation() * Vector3f::UnitZ());
-}
-
-Vector3f Camera::Up(void) const
-{
-    return Rotation() * Vector3f::UnitY();
-}
-
-Vector3f Camera::Right(void) const
-{
-    return Rotation() * Vector3f::UnitX();
-}
-
-void Camera::SetDirection(const Vector3f& dir)
-{
-    Vector3f up = this->Up();
-
-    Matrix3f camAxes;
-
-    camAxes.col(2) = (-dir).normalized();
-    camAxes.col(0) = up.cross(camAxes.col(2)).normalized();
-    camAxes.col(1) = camAxes.col(2).cross(camAxes.col(0)).normalized();
-    SetRotation(Quaternionf(camAxes));
-
-    _ViewIsUpToDate = false;
-}
-
-void Camera::SetTarget(const Vector3f& target)
-{
-    _Target = target;
-    if (!_Target.isApprox(Position()))
-    {
-        Vector3f newDir = _Target - Position();
-        SetDirection(newDir.normalized());
-    }
-}
-
-void Camera::SetPosition(const Vector3f& p)
-{
-    _transform.position = p;
-
-    _ViewIsUpToDate = false;
-}
-
-void Camera::SetRotation(const Quaternionf& rot)
-{
-    _transform.rotation = rot;
-
-    _ViewIsUpToDate = false;
-}
-
-void Camera::SetTransform(const Transform& t)
-{
-    _transform = t;
-
-    _ViewIsUpToDate = false;
-}
-
-void Camera::RotateAroundTarget(const Quaternionf& rotation)
-{
-    Matrix4f mRot, mT, mTm;
-
-    // update the transform matrix
-    UpdateViewMatrix();
-    Vector3f t = _ViewMatrix * _Target;
-
-    _ViewMatrix = Translation3f(t) * rotation * Translation3f(-t) * _ViewMatrix;
-
-    Quaternionf qa(_ViewMatrix.linear());
-    qa = qa.conjugate();
-    SetRotation(qa);
-    SetPosition(-(qa * _ViewMatrix.translation()));
-
-    _ViewIsUpToDate = true;
-}
-
-void Camera::RotateLocal(const Quaternionf& rotation)
-{
-    float dist = (Position() - _Target).norm();
-    SetRotation(Rotation() * rotation);
-    _Target = Position() + dist * Direction();
-
-    _ViewIsUpToDate = false;
-}
-
-void Camera::Zoom(float d)
-{
-    float dist = (Position() - _Target).norm();
-    if (dist > d)
-    {
-        SetPosition(Position() + Direction() * d);
-        
-        _ViewIsUpToDate = false;
-    }
-}
-
-void Camera::TranslateLocal(const Vector3f& t)
-{
-    Vector3f trans = Rotation() * t;
-    SetPosition(Position() + trans);
-    SetTarget(_Target + trans);
-
-    _ViewIsUpToDate = false;
-}
-
-void Camera::UpdateViewMatrix(void) const
-{
-    if (!_ViewIsUpToDate)
-    {
-        Quaternionf q = Rotation().conjugate();
-        _ViewMatrix.linear() = q.toRotationMatrix();
-        _ViewMatrix.translation() = -(_ViewMatrix.linear() * Position());
-
-        _ViewIsUpToDate = true;
-    }
-}
-
-const Affine3f& Camera::ViewMatrix(void) const
+    : m_Position(0.0f, 0.0f, 3.0f)
+    , m_Target(0.0f, 0.0f, 0.0f)
+    , m_Up(0.0f, 1.0f, 0.0f)
+    , m_FOV(45.0f)
+    , m_AspectRatio(4.0f / 3.0f)
+    , m_NearPlane(0.1f)
+    , m_FarPlane(100.0f)
 {
     UpdateViewMatrix();
-    return _ViewMatrix;
-}
-
-void Camera::UpdateProjectionMatrix(void) const
-{
-    if (!_ProjIsUpToDate)
-    {
-        _ProjectionMatrix.setIdentity();
-        float aspect = float(_VPwidth) / float(_VPheight);
-        float theta = _FovY * 0.5;
-        float range = _Far - _Near;
-        float invtan = 1. / tan(theta);
-
-        _ProjectionMatrix(1, 1) = invtan;
-        _ProjectionMatrix(2, 2) = -(_Near + _Far) / range;
-        _ProjectionMatrix(3, 2) = -1;
-        _ProjectionMatrix(2, 3) = -2 * _Near * _Far / range;
-        _ProjectionMatrix(3, 3) = 0;
-
-        _ProjIsUpToDate = true;
-    }
-}
-
-const Matrix4f& Camera::ProjectionMatrix(void) const
-{
     UpdateProjectionMatrix();
-    return _ProjectionMatrix;
 }
 
-void Camera::ActivateGL(void)
+void Camera::SetPosition(const Eigen::Vector3f& position)
 {
-    glViewport(VPx(), VPy(), VPwidth(), VPheight());
-    
+    m_Position = position;
+    UpdateViewMatrix();
+}
+
+void Camera::SetTarget(const Eigen::Vector3f& target)
+{
+    m_Target = target;
+    UpdateViewMatrix();
+}
+
+void Camera::SetFOV(float fovDegrees)
+{
+    m_FOV = fovDegrees;
+    UpdateProjectionMatrix();
+}
+
+void Camera::SetAspectRatio(float aspect)
+{
+    m_AspectRatio = aspect;
+    UpdateProjectionMatrix();
+}
+
+void Camera::SetClippingPlanes(float nearPlane, float farPlane)
+{
+    m_NearPlane = nearPlane;
+    m_FarPlane = farPlane;
+    UpdateProjectionMatrix();
+}
+
+const Eigen::Matrix4f& Camera::GetViewMatrix() const
+{
+    return m_View;
+}
+
+const Eigen::Matrix4f& Camera::GetProjectionMatrix() const
+{
+    return m_Projection;
+}
+
+void Camera::UpdateViewMatrix()
+{
+    // Usamos la aproximación "lookAt" con Eigen
+    // Vector dirección
+    Eigen::Vector3f zAxis = (m_Position - m_Target).normalized();
+    Eigen::Vector3f xAxis = m_Up.cross(zAxis).normalized();
+    Eigen::Vector3f yAxis = zAxis.cross(xAxis);
+
+    // Construimos la matriz a mano (estilo lookAt)
+    m_View.setIdentity();
+    m_View(0, 0) = xAxis.x(); m_View(0, 1) = xAxis.y(); m_View(0, 2) = xAxis.z();
+    m_View(1, 0) = yAxis.x(); m_View(1, 1) = yAxis.y(); m_View(1, 2) = yAxis.z();
+    m_View(2, 0) = zAxis.x(); m_View(2, 1) = zAxis.y(); m_View(2, 2) = zAxis.z();
+
+    m_View(0, 3) = -xAxis.dot(m_Position);
+    m_View(1, 3) = -yAxis.dot(m_Position);
+    m_View(2, 3) = -zAxis.dot(m_Position);
+}
+
+void Camera::UpdateProjectionMatrix()
+{
+    m_Projection.setIdentity();
+
+    float radFov = m_FOV * static_cast<float>(M_PI) / 180.0f;
+    float tanHalfFov = std::tan(radFov / 2.0f);
+
+    m_Projection(0, 0) = 1.0f / (m_AspectRatio * tanHalfFov);
+    m_Projection(1, 1) = 1.0f / tanHalfFov;
+    m_Projection(2, 2) = -(m_FarPlane + m_NearPlane) / (m_FarPlane - m_NearPlane);
+    m_Projection(2, 3) = -(2.0f * m_FarPlane * m_NearPlane) / (m_FarPlane - m_NearPlane);
+    m_Projection(3, 2) = -1.0f;
+    m_Projection(3, 3) = 0.0f;
 }

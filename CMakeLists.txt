@@ -67,8 +67,8 @@ find_package(OpenGL REQUIRED)
 # Adding source code and headers
 
 set(SOURCE_DIR ${CMAKE_SOURCE_DIR}/src)
-file(GLOB_RECURSE PROJECT_SOURCES "${SOURCE_DIR}/graphics/*.cpp" "${SOURCE_DIR}/physics/*.cpp")
-file(GLOB_RECURSE PROJECT_HEADERS "${SOURCE_DIR}/graphics/*.h" "${SOURCE_DIR}/physics/*.h" "${SOURCE_DIR}/support/*.h")
+file(GLOB_RECURSE PROJECT_SOURCES "${SOURCE_DIR}/graphics/*.cpp" "${SOURCE_DIR}/geometry/*.cpp" "${SOURCE_DIR}/physics/*.cpp" "${SOURCE_DIR}/support/*.cpp")
+file(GLOB_RECURSE PROJECT_HEADERS "${SOURCE_DIR}/graphics/*.h" "${SOURCE_DIR}/geometry/*.h" "${SOURCE_DIR}/physics/*.h" "${SOURCE_DIR}/support/*.h")
 
 list(APPEND PROJECT_SOURCES "${SOURCE_DIR}/main.cpp")
 
