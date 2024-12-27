@@ -1,5 +1,6 @@
 // Shader.cpp
 #include "Shader.h"
+#include "../support/Loader.h"
 #include <iostream>
 
 Shader::~Shader()
@@ -36,6 +37,22 @@ bool Shader::CreateShaderProgram(const char* vertexSource, const char* fragmentS
     glDeleteShader(fragmentShader);
 
     return true;
+}
+
+bool Shader::CreateShaderProgramFromFiles(const std::string& vertexPath, const std::string& fragmentPath)
+{
+    try
+    {
+        std::string vertexCode = LoadFileAsString(vertexPath);
+        std::string fragmentCode = LoadFileAsString(fragmentPath);
+
+        return CreateShaderProgram(vertexCode.c_str(), fragmentCode.c_str());
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[Shader] Error: " << e.what() << std::endl;
+        return false;
+    }
 }
 
 void Shader::Use() const

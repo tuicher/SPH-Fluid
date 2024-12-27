@@ -11,6 +11,9 @@ public:
     ~Shader();
 
     bool CreateShaderProgram(const char* vertexSource, const char* fragmentSource);
+
+    bool CreateShaderProgramFromFiles(const std::string& vertexPath, const std::string& fragmentPath);
+
     void Use() const;
     void SetMatrix4(const std::string& uniformName, const Eigen::Matrix4f& matrix);
     void SetVector3f(const std::string& uniformName, const Eigen::Vector3f& value);

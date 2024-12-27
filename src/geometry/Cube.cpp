@@ -1,5 +1,6 @@
 // Cube.cpp
 #include "Cube.h"
+#include <Eigen/Geometry>
 #include <vector>
 #include <iostream>
 
@@ -9,78 +10,51 @@ Cube::Cube()
     m_Color = { 1.0f, 0.0f, 0.0f };
 }
 
-Cube::~Cube()
+void Cube::BuildGeometry()
 {
-    // Liberamos los buffers
-    if (m_VBO)  glDeleteBuffers(1, &m_VBO);
-    if (m_EBO)  glDeleteBuffers(1, &m_EBO);
-    if (m_VAO)  glDeleteVertexArrays(1, &m_VAO);
-}
+    m_Vertices.clear();
+    m_Normals.clear();
+    m_Indices.clear();
 
-void Cube::Setup()
-{
     // Datos de vértices para un cubo centrado en (0,0,0)
-    float cubeVertices[] = {
-        // Cara frontal (z=+0.5)
-        -0.5f, -0.5f,  0.5f,
-         0.5f, -0.5f,  0.5f,
-         0.5f,  0.5f,  0.5f,
-        -0.5f,  0.5f,  0.5f,
-        // Cara trasera (z=-0.5)
-        -0.5f, -0.5f, -0.5f,
-         0.5f, -0.5f, -0.5f,
-         0.5f,  0.5f, -0.5f,
-        -0.5f,  0.5f, -0.5f
+    m_Vertices = {
+       Eigen::Vector3f(-0.5f,  0.5f,  0.5f),    // 0
+       Eigen::Vector3f( 0.5f,  0.5f,  0.5f),    // 1
+       Eigen::Vector3f( 0.5f, -0.5f,  0.5f),    // 2
+       Eigen::Vector3f(-0.5f, -0.5f,  0.5f),    // 3
+       Eigen::Vector3f(-0.5f,  0.5f, -0.5f),    // 4
+       Eigen::Vector3f( 0.5f,  0.5f, -0.5f),    // 5
+       Eigen::Vector3f( 0.5f, -0.5f, -0.5f),    // 6
+       Eigen::Vector3f(-0.5f, -0.5f, -0.5f)     // 7
     };
 
-    unsigned int cubeIndices[] = {
-        // Cara frontal
-        0, 1, 2,
-        2, 3, 0,
-        // Cara derecha
-        1, 5, 6,
-        6, 2, 1,
-        // Cara trasera
-        5, 4, 7,
-        7, 6, 5,
-        // Cara izquierda
-        4, 0, 3,
-        3, 7, 4,
-        // Cara superior
-        3, 2, 6,
-        6, 7, 3,
-        // Cara inferior
-        4, 5, 1,
-        1, 0, 4
+    m_Indices = {
+        0,1,2,  2,3,0,  // front
+        1,5,6,  6,2,1,  // right
+        5,4,7,  7,6,5,  // back
+        4,0,3,  3,7,4,  // left
+        4,5,1,  1,0,4,  // top
+        3,2,6,  6,7,3   // bottom
     };
 
-    // Generar VAO, VBO, EBO
-    glGenVertexArrays(1, &m_VAO);
-    glGenBuffers(1, &m_VBO);
-    glGenBuffers(1, &m_EBO);
+    m_Normals.resize(m_Vertices.size(), Eigen::Vector3f::Zero());
 
-    // Enlazar VAO
-    glBindVertexArray(m_VAO);
+    for (size_t i = 0; i < m_Indices.size(); i += 3)
+    {
+        unsigned i0 = m_Indices[i + 0];
+        unsigned i1 = m_Indices[i + 1];
+        unsigned i2 = m_Indices[i + 2];
 
-    // Subir vértices
-    glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), cubeVertices, GL_STATIC_DRAW);
+        Eigen::Vector3f v0 = m_Vertices[i0];
+        Eigen::Vector3f v1 = m_Vertices[i1];
+        Eigen::Vector3f v2 = m_Vertices[i2];
 
-    // Subir índices
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(cubeIndices), cubeIndices, GL_STATIC_DRAW);
+        Eigen::Vector3f n = (v1 - v0).cross(v2 - v0).normalized();
+        m_Normals[i0] += n;
+        m_Normals[i1] += n;
+        m_Normals[i2] += n;
+    }
 
-    // Atributo de posición
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    // Desenlazar
-    glBindVertexArray(0);
-}
-
-void Cube::Draw()
-{
-    glBindVertexArray(m_VAO);
-    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
-    glBindVertexArray(0);
+    for (auto& nn : m_Normals)
+        nn.normalize();
 }

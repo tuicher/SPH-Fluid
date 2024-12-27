@@ -1,36 +1,48 @@
 // Mesh.h
 #pragma once
-#include <glad/glad.h>
+#include <vector>
 #include <Eigen/Core>
+#include <glad/glad.h>
 
 /**
- * @brief Clase abstracta para representar una malla.
- *        Ofrece una interfaz para configurar y dibujar una malla.
+ * @brief Clase base que representa una malla.
+ *        Almacena contenedores de vértices, normales e índices.
+ *        Los hijos deben implementar BuildGeometry().
  */
 class Mesh
 {
 public:
-    virtual ~Mesh() = default;
+    virtual ~Mesh();
 
-    /**
-     * @brief Configura la malla: genera buffers, sube datos de vértices e índices a la GPU, etc.
-     */
-    virtual void Setup() = 0;
+    // Configura la malla (crea buffers, sube datos). 
+    // Llama internamente a BuildGeometry() para que el hijo rellene los vectores.
+    void Setup();
 
-    /**
-     * @brief Llama a glDraw* correspondiente para dibujar la malla en pantalla.
-     */
-    virtual void Draw() = 0;
+    // Llama a glDrawElements o lo que corresponda
+    virtual void Draw();
 
+    // Color base que usas en el shading
     void SetColor(const Eigen::Vector3f& color) { m_Color = color; }
     const Eigen::Vector3f& GetColor() const { return m_Color; }
 
 protected:
+    Mesh();  // protected para que sólo se instancie derivando
+
+    // Método que debe implementar cada hijo para rellenar
+    // m_Vertices, m_Normals y m_Indices.
+    virtual void BuildGeometry() = 0;
+
+    // Contenedores con la info de la malla
+    std::vector<Eigen::Vector3f> m_Vertices;
+    std::vector<Eigen::Vector3f> m_Normals;
+    std::vector<unsigned int>    m_Indices;
+
+    // OpenGL buffers
     GLuint m_VAO = 0;
     GLuint m_VBO = 0;
     GLuint m_EBO = 0;
 
-    // Color base de la malla
-    Eigen::Vector3f m_Color = { 1.0f, 1.0f, 1.0f };  // Por defecto blanco
+    // Color del objeto
+    Eigen::Vector3f m_Color = { 1.0f, 1.0f, 1.0f };
 };
 

@@ -106,14 +106,25 @@ void Application::InitOpenGL()
 void Application::InitScene()
 {
     // Compilar y linkear shader
-    m_Shader.CreateShaderProgram(vertexShaderSource, fragmentShaderSource);
+    //m_Shader.CreateShaderProgram(vertexShaderSource, fragmentShaderSource);
+
+    bool success = m_Shader.CreateShaderProgramFromFiles(
+        "C:\\Users\\Javie\\VSCode Projects\\TFM\\SPH-Fluid\\src\\graphics\\shaders\\phong.vs",
+        "C:\\Users\\Javie\\VSCode Projects\\TFM\\SPH-Fluid\\src\\graphics\\shaders\\phong.fs"
+    );
+
+    if (!success)
+    {
+        std::cerr << "Error al crear el shader program desde ficheros\n";
+        // Maneja el error
+    }
 
     // Crear el cubo y configurarlo
     m_Cube = std::make_unique<Cube>();
     m_Cube->Setup();
 
     // Crear una esfera y configurarla (radio=1.0, 32 sectores, 32 stacks, por ejemplo)
-    m_Sphere = std::make_unique<Sphere>(1.0f, 128, 128);
+    m_Sphere = std::make_unique<Sphere>(1.0f, 64, 64);
     m_Sphere->Setup();
 }
 
