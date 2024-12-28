@@ -10,11 +10,14 @@ public:
     Camera();
     ~Camera() = default;
 
+    Eigen::Vector3f GetPosition() const;
     void SetPosition(const Eigen::Vector3f& position);
     void SetTarget(const Eigen::Vector3f& target);
     void SetFOV(float fovDegrees);
     void SetAspectRatio(float aspect);
     void SetClippingPlanes(float nearPlane, float farPlane);
+
+    void Translate(Eigen::Vector3f translation);
 
     const Eigen::Matrix4f& GetViewMatrix() const;
     const Eigen::Matrix4f& GetProjectionMatrix() const;

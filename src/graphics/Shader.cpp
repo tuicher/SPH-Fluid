@@ -60,20 +60,6 @@ void Shader::Use() const
     glUseProgram(m_ProgramID);
 }
 
-void Shader::SetMatrix4(const std::string& uniformName, const Eigen::Matrix4f& matrix)
-{
-    GLint loc = glGetUniformLocation(m_ProgramID, uniformName.c_str());
-    if (loc == -1) return; // No se encontró el uniforme
-    glUniformMatrix4fv(loc, 1, GL_FALSE, matrix.data());
-}
-
-void Shader::SetVector3f(const std::string& uniformName, const Eigen::Vector3f& value)
-{
-    GLint loc = glGetUniformLocation(m_ProgramID, uniformName.c_str());
-    if (loc != -1)
-        glUniform3f(loc, value.x(), value.y(), value.z());
-}
-
 bool Shader::CheckCompileErrors(GLuint shader, const std::string& type)
 {
     GLint success;
@@ -99,4 +85,36 @@ bool Shader::CheckCompileErrors(GLuint shader, const std::string& type)
         }
     }
     return true;
+}
+
+GLint Shader::GetUniformLocation(const std::string& uniformName) const
+{
+    GLint loc = glGetUniformLocation(m_ProgramID, uniformName.c_str());
+    if (loc == -1)
+    {
+        // Opcionalmente, puedes loguear un warning.
+        std::cerr << "Warning: uniform '" << uniformName << "' not found." << std::endl;
+    }
+    return loc;
+}
+
+void Shader::SetMatrix4(const std::string& uniformName, const Eigen::Matrix4f& matrix)
+{
+    GLint loc = GetUniformLocation(uniformName);
+    if (loc == -1) return;  // uniform no encontrado
+    glUniformMatrix4fv(loc, 1, GL_FALSE, matrix.data());
+}
+
+void Shader::SetMatrix3(const std::string& uniformName, const Eigen::Matrix3f& matrix)
+{
+    GLint loc = GetUniformLocation(uniformName);
+    if (loc == -1) return;
+    glUniformMatrix3fv(loc, 1, GL_FALSE, matrix.data());
+}
+
+void Shader::SetVector3f(const std::string& uniformName, const Eigen::Vector3f& value)
+{
+    GLint loc = GetUniformLocation(uniformName);
+    if (loc == -1) return;
+    glUniform3f(loc, value.x(), value.y(), value.z());
 }

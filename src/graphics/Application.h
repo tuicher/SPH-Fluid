@@ -18,6 +18,9 @@
 #include "../geometry/Cube.h"
 #include "../geometry/Sphere.h"
 
+//Defines
+#define D_TRANSLATION 0.2f
+
 class Application
 {
 public:
@@ -33,6 +36,10 @@ private:
     void Cleanup();
 
     static void FramebufferSizeCallback(GLFWwindow* window, int width, int height);
+    static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
+    void HandleKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
+    static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
+    static void CursorPosCallback(GLFWwindow* window, double xpos, double ypos);
 
 private:
     GLFWwindow* m_Window = nullptr;
@@ -42,6 +49,9 @@ private:
     AppInfo m_AppInfo;         // Info de la app (FOV, FPS, etc.)
 
     Camera m_Camera;
+
+    static Eigen::Vector3f Translation;
+
     Shader m_Shader;
     ImGuiLayer m_ImGuiLayer;
 

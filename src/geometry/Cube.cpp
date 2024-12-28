@@ -37,24 +37,14 @@ void Cube::BuildGeometry()
         3,2,6,  6,7,3   // bottom
     };
 
-    m_Normals.resize(m_Vertices.size(), Eigen::Vector3f::Zero());
-
-    for (size_t i = 0; i < m_Indices.size(); i += 3)
-    {
-        unsigned i0 = m_Indices[i + 0];
-        unsigned i1 = m_Indices[i + 1];
-        unsigned i2 = m_Indices[i + 2];
-
-        Eigen::Vector3f v0 = m_Vertices[i0];
-        Eigen::Vector3f v1 = m_Vertices[i1];
-        Eigen::Vector3f v2 = m_Vertices[i2];
-
-        Eigen::Vector3f n = (v1 - v0).cross(v2 - v0).normalized();
-        m_Normals[i0] += n;
-        m_Normals[i1] += n;
-        m_Normals[i2] += n;
-    }
-
-    for (auto& nn : m_Normals)
-        nn.normalize();
+    m_Normals = {
+       Eigen::Vector3f(-1,  1,  1).normalized(), // 0
+       Eigen::Vector3f( 1,  1,  1).normalized(), // 1
+       Eigen::Vector3f( 1, -1,  1).normalized(), // 2
+       Eigen::Vector3f(-1, -1,  1).normalized(), // 3
+       Eigen::Vector3f(-1,  1, -1).normalized(), // 4
+       Eigen::Vector3f( 1,  1, -1).normalized(), // 5
+       Eigen::Vector3f( 1, -1, -1).normalized(), // 6
+       Eigen::Vector3f(-1, -1, -1).normalized()  // 7
+    };
 }

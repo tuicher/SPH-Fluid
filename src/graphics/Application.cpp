@@ -83,6 +83,10 @@ bool Application::InitGLFW(int width, int height, const char* title)
     // Callback de cambio de tamaño
     glfwSetWindowUserPointer(m_Window, this);
     glfwSetFramebufferSizeCallback(m_Window, FramebufferSizeCallback);
+    glfwSetKeyCallback(m_Window, KeyCallback);
+
+    // V-Sync
+    glfwSwapInterval(1);
 
     return true;
 }
@@ -106,25 +110,20 @@ void Application::InitOpenGL()
 void Application::InitScene()
 {
     // Compilar y linkear shader
-    //m_Shader.CreateShaderProgram(vertexShaderSource, fragmentShaderSource);
-
     bool success = m_Shader.CreateShaderProgramFromFiles(
-        "C:\\Users\\Javie\\VSCode Projects\\TFM\\SPH-Fluid\\src\\graphics\\shaders\\phong.vs",
-        "C:\\Users\\Javie\\VSCode Projects\\TFM\\SPH-Fluid\\src\\graphics\\shaders\\phong.fs"
+        "..\\src\\graphics\\shaders\\phong.vs",
+        "..\\src\\graphics\\shaders\\phong.fs"
     );
 
     if (!success)
     {
         std::cerr << "Error al crear el shader program desde ficheros\n";
-        // Maneja el error
     }
 
-    // Crear el cubo y configurarlo
     m_Cube = std::make_unique<Cube>();
     m_Cube->Setup();
 
-    // Crear una esfera y configurarla (radio=1.0, 32 sectores, 32 stacks, por ejemplo)
-    m_Sphere = std::make_unique<Sphere>(1.0f, 64, 64);
+    m_Sphere = std::make_unique<Sphere>(0.5f, 16, 16);
     m_Sphere->Setup();
 }
 
@@ -170,27 +169,50 @@ void Application::Run()
 
         // Crear la matriz Model (rotación, por ejemplo)
         float time = static_cast<float>(glfwGetTime());
+        // 1) Calcular model
         Eigen::Matrix4f model = Eigen::Matrix4f::Identity();
-        model *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
 
-        // Tomar View y Projection de la cámara
+        model *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
+        model *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 1.0f, 0.0f)).matrix();
+
+        // 2) Calcular view y projection (obtenid os de tu cámara)
         Eigen::Matrix4f view = m_Camera.GetViewMatrix();
         Eigen::Matrix4f projection = m_Camera.GetProjectionMatrix();
+
+        // 3) Calcular MVP
         Eigen::Matrix4f mvp = projection * view * model;
 
-        m_Shader.SetMatrix4("uMVP", mvp);
-        m_Shader.SetVector3f("uColor", m_Cube->GetColor());
+        // 4) Calcular Normal Matrix (3x3)
+        Eigen::Matrix3f normalMat = model.topLeftCorner<3, 3>().inverse().transpose();
 
-        // Dibujar el cubo
+        // 5) Subir al shader
+        m_Shader.Use();
+        m_Shader.SetMatrix4("uModel", model);
+        m_Shader.SetMatrix4("uMVP", mvp);
+        m_Shader.SetMatrix3("uNormalMat", normalMat);
+
+        // Otros uniforms
+        m_Shader.SetVector3f("uObjectColor", m_Cube->GetColor());
+        m_Shader.SetVector3f("uLightPos", Eigen::Vector3f(1.0f, 1.0f, 1.0f));
+        m_Shader.SetVector3f("uLightColor", Eigen::Vector3f(1.0f, 1.0f, 1.0f));
+
+        // 6) Dibujar
         m_Cube->Draw();
 
         // Dibujar la esfera, movida en X para no superponerse
         Eigen::Matrix4f modelSphere = Eigen::Matrix4f::Identity();
-        modelSphere *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 0.0f, -1.5f)).matrix();
-        modelSphere *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitZ())).matrix();
+
+        modelSphere *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
+        modelSphere *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 0.0f, 0.0f)).matrix();
+
         Eigen::Matrix4f mvpSphere = projection * view * modelSphere;
+        Eigen::Matrix3f normalSphere = modelSphere.topLeftCorner<3, 3>().inverse().transpose();
+
+        m_Shader.SetMatrix4("uModel", modelSphere);
         m_Shader.SetMatrix4("uMVP", mvpSphere);
-        m_Shader.SetVector3f("uColor", m_Sphere->GetColor());
+        m_Shader.SetMatrix3("uNormalMat", normalSphere);
+
+        m_Shader.SetVector3f("uObjectColor", m_Sphere->GetColor());
 
         m_Sphere->Draw();
 
@@ -212,5 +234,48 @@ void Application::FramebufferSizeCallback(GLFWwindow* window, int width, int hei
         app->m_Height = height;
         glViewport(0, 0, width, height);
         app->m_Camera.SetAspectRatio((float)width / (float)height);
+    }
+}
+
+void Application::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    // Recuperar el puntero a la instancia de la clase
+    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+    if (app)
+    {
+        // Delegamos la lógica a un método no estático
+        app->HandleKeyCallback(window, key, scancode, action, mods);
+    }
+}
+
+void Application::HandleKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    // Solo actuar en el momento en que se presiona la tecla
+    if (action == GLFW_PRESS || action == GLFW_REPEAT)
+    {
+        // Un ejemplo: tecla 'W' para incrementar zTrans
+        if (key == GLFW_KEY_W) {
+            m_Camera.Translate(Eigen::Vector3f( 0.0f, 0.0f, D_TRANSLATION));
+        }
+        if (key == GLFW_KEY_S) {
+            m_Camera.Translate(Eigen::Vector3f( 0.0f, 0.0f,-D_TRANSLATION));
+        }
+        if (key == GLFW_KEY_A) {
+            m_Camera.Translate(Eigen::Vector3f(-D_TRANSLATION, 0.0f, 0.0f));
+        }
+        if (key == GLFW_KEY_D) {
+            m_Camera.Translate(Eigen::Vector3f( D_TRANSLATION, 0.0f, 0.0f));
+        }
+        if (key == GLFW_KEY_Q) {
+            m_Camera.Translate(Eigen::Vector3f( 0.0f,-D_TRANSLATION, 0.0f));
+        }
+        if (key == GLFW_KEY_E) {
+            m_Camera.Translate(Eigen::Vector3f( 0.0f, D_TRANSLATION, 0.0f));
+        }
+        if (key == GLFW_KEY_SPACE) {
+            // Ejemplo: invertir sistema en marcha/parada
+            // sph->sys_running = 1 - sph->sys_running;
+            std::cout << "Presionaste SPACE (ejemplo)" << std::endl;
+        }
     }
 }

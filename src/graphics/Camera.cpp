@@ -17,6 +17,11 @@ Camera::Camera()
     UpdateProjectionMatrix();
 }
 
+Eigen::Vector3f Camera::GetPosition() const
+{
+    return m_Position;
+}
+
 void Camera::SetPosition(const Eigen::Vector3f& position)
 {
     m_Position = position;
@@ -46,6 +51,11 @@ void Camera::SetClippingPlanes(float nearPlane, float farPlane)
     m_NearPlane = nearPlane;
     m_FarPlane = farPlane;
     UpdateProjectionMatrix();
+}
+
+void Camera::Translate(Eigen::Vector3f translation)
+{
+    this->SetPosition(this->GetPosition() + translation);
 }
 
 const Eigen::Matrix4f& Camera::GetViewMatrix() const
