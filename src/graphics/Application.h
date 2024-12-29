@@ -38,13 +38,20 @@ private:
     static void FramebufferSizeCallback(GLFWwindow* window, int width, int height);
     static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
     void HandleKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
-    static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
-    static void CursorPosCallback(GLFWwindow* window, double xpos, double ypos);
 
+    static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
+    void HandleMouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
+
+    static void CursorPosCallback(GLFWwindow* window, double xpos, double ypos);
+    void HandleCursorPosCallback(GLFWwindow* window, double xpos, double ypos);
 private:
     GLFWwindow* m_Window = nullptr;
     int m_Width;
     int m_Height;
+
+    double ox, oy;
+    float xRotLength, yRotLength;
+    int buttonState;
 
     AppInfo m_AppInfo;         // Info de la app (FOV, FPS, etc.)
 

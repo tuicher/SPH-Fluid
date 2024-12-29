@@ -37,6 +37,8 @@ Application::Application(int width, int height, const char* title)
     : m_Width(width)
     , m_Height(height)
     , m_FpsSamples(MAX_FPS_SAMPLES, 0.0f)
+    , xRotLength(0.0f)
+    , yRotLength(0.0f)
 {
     if (!InitGLFW(width, height, title))
     {
@@ -84,6 +86,8 @@ bool Application::InitGLFW(int width, int height, const char* title)
     glfwSetWindowUserPointer(m_Window, this);
     glfwSetFramebufferSizeCallback(m_Window, FramebufferSizeCallback);
     glfwSetKeyCallback(m_Window, KeyCallback);
+    glfwSetMouseButtonCallback(m_Window, MouseButtonCallback);
+    glfwSetCursorPosCallback(m_Window, CursorPosCallback);
 
     // V-Sync
     glfwSwapInterval(1);
@@ -164,6 +168,16 @@ void Application::Run()
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        // Camera movement
+
+        if (buttonState == 1)
+        {
+            float newXRot = m_Camera.GetRotation().x() + ((xRotLength - m_Camera.GetRotation().x()) * 0.1f);
+            float newYRot = m_Camera.GetRotation().y() + ((yRotLength - m_Camera.GetRotation().y()) * 0.1f);
+
+            m_Camera.SetRotation(Eigen::Vector2f(newXRot, newYRot));
+        }
+
         // Usar tu shader
         m_Shader.Use();
 
@@ -173,7 +187,7 @@ void Application::Run()
         Eigen::Matrix4f model = Eigen::Matrix4f::Identity();
 
         model *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
-        model *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 1.0f, 0.0f)).matrix();
+        model *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 0.0f, 0.0f)).matrix();
 
         // 2) Calcular view y projection (obtenid os de tu cámara)
         Eigen::Matrix4f view = m_Camera.GetViewMatrix();
@@ -203,7 +217,7 @@ void Application::Run()
         Eigen::Matrix4f modelSphere = Eigen::Matrix4f::Identity();
 
         modelSphere *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
-        modelSphere *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 0.0f, 0.0f)).matrix();
+        modelSphere *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 1.0f, 0.0f)).matrix();
 
         Eigen::Matrix4f mvpSphere = projection * view * modelSphere;
         Eigen::Matrix3f normalSphere = modelSphere.topLeftCorner<3, 3>().inverse().transpose();
@@ -278,4 +292,56 @@ void Application::HandleKeyCallback(GLFWwindow* window, int key, int scancode, i
             std::cout << "Presionaste SPACE (ejemplo)" << std::endl;
         }
     }
+}
+
+void Application::MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+{
+    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+    if (app)
+    {
+        // Delegamos la lógica a un método no estático
+        app->HandleMouseButtonCallback(window, button, action, mods);
+    }
+}
+
+void Application::HandleMouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+{
+    if (button == GLFW_MOUSE_BUTTON_LEFT)
+    {
+        if (action == GLFW_PRESS) {
+            buttonState = 1;
+            //std::cout << "Pulsado" << std::endl;
+        }
+        else if (action == GLFW_RELEASE) {
+            buttonState = 0;
+            //std::cout << "Soltado" << std::endl;
+        }
+    }
+}
+
+void Application::CursorPosCallback(GLFWwindow* window, double xpos, double ypos)
+{
+    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+    if (app)
+    {
+        app->HandleCursorPosCallback(window, xpos, ypos);
+    }
+}
+
+void Application::HandleCursorPosCallback(GLFWwindow* window, double xpos, double ypos)
+{
+    // dx, dy
+    double dx = xpos - ox;
+    double dy = ypos - oy;
+
+    if (buttonState == 1)
+    {
+        xRotLength += static_cast<float>(dy) / 5.0f;
+        yRotLength += static_cast<float>(dx) / 5.0f;
+
+        //std::cout << "( " << static_cast<float>(dy) / 5.0f << ", " << static_cast<float>(dx) / 5.0f << ")" << std::endl;
+    }
+
+    ox = xpos;
+    oy = ypos;
 }

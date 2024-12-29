@@ -1,15 +1,17 @@
-// Camera.cpp
+﻿// Camera.cpp
 #include "Camera.h"
 
 #include "../support/Common.h"
 
-// Constructor con valores por defecto
+
+
 Camera::Camera()
-    : m_Position(0.0f, 0.0f, 3.0f)
-    , m_Target(0.0f, 0.0f, 0.0f)
+    : m_Position(0.0f, 0.0f, 5.0f)
+    , m_Rotation(15.0f, 0.0f)
     , m_Up(0.0f, 1.0f, 0.0f)
+    , m_Target(0.0f, 0.0f, 0.0f)
     , m_FOV(45.0f)
-    , m_AspectRatio(4.0f / 3.0f)
+    , m_AspectRatio(1.3333f)
     , m_NearPlane(0.1f)
     , m_FarPlane(100.0f)
 {
@@ -17,75 +19,72 @@ Camera::Camera()
     UpdateProjectionMatrix();
 }
 
-Eigen::Vector3f Camera::GetPosition() const
+inline Eigen::Matrix4f LookAt(const Eigen::Vector3f& eye,
+    const Eigen::Vector3f& center,
+    const Eigen::Vector3f& up)
 {
-    return m_Position;
-}
+    Eigen::Matrix4f result;
 
-void Camera::SetPosition(const Eigen::Vector3f& position)
-{
-    m_Position = position;
-    UpdateViewMatrix();
-}
+    // Usamos la aproximaci�n "lookAt" con Eigen
+    // Vector direcci�n
+    Eigen::Vector3f zAxis = (eye - center).normalized();
+    Eigen::Vector3f xAxis = up.cross(zAxis).normalized();
+    Eigen::Vector3f yAxis = zAxis.cross(xAxis);
 
-void Camera::SetTarget(const Eigen::Vector3f& target)
-{
-    m_Target = target;
-    UpdateViewMatrix();
-}
+    // Construimos la matriz a mano (estilo lookAt)
+    result.setIdentity();
+    result(0, 0) = xAxis.x(); result(0, 1) = xAxis.y(); result(0, 2) = xAxis.z();
+    result(1, 0) = yAxis.x(); result(1, 1) = yAxis.y(); result(1, 2) = yAxis.z();
+    result(2, 0) = zAxis.x(); result(2, 1) = zAxis.y(); result(2, 2) = zAxis.z();
 
-void Camera::SetFOV(float fovDegrees)
-{
-    m_FOV = fovDegrees;
-    UpdateProjectionMatrix();
-}
+    result(0, 3) = -xAxis.dot(eye);
+    result(1, 3) = -yAxis.dot(eye);
+    result(2, 3) = -zAxis.dot(eye);
 
-void Camera::SetAspectRatio(float aspect)
-{
-    m_AspectRatio = aspect;
-    UpdateProjectionMatrix();
-}
-
-void Camera::SetClippingPlanes(float nearPlane, float farPlane)
-{
-    m_NearPlane = nearPlane;
-    m_FarPlane = farPlane;
-    UpdateProjectionMatrix();
-}
-
-void Camera::Translate(Eigen::Vector3f translation)
-{
-    this->SetPosition(this->GetPosition() + translation);
-}
-
-const Eigen::Matrix4f& Camera::GetViewMatrix() const
-{
-    return m_View;
-}
-
-const Eigen::Matrix4f& Camera::GetProjectionMatrix() const
-{
-    return m_Projection;
+    return result;
 }
 
 void Camera::UpdateViewMatrix()
 {
-    // Usamos la aproximaci�n "lookAt" con Eigen
-    // Vector direcci�n
-    Eigen::Vector3f zAxis = (m_Position - m_Target).normalized();
-    Eigen::Vector3f xAxis = m_Up.cross(zAxis).normalized();
-    Eigen::Vector3f yAxis = zAxis.cross(xAxis);
+    // 1. Convertir rotaciones a radianes si están en grados
+    float xAngleRad = m_Rotation.x() * DEG2RAD;  // asumiendo que m_Rotation.x() está en grados
+    float yAngleRad = m_Rotation.y() * DEG2RAD;  // asumiendo que m_Rotation.y() está en grados
 
-    // Construimos la matriz a mano (estilo lookAt)
-    m_View.setIdentity();
-    m_View(0, 0) = xAxis.x(); m_View(0, 1) = xAxis.y(); m_View(0, 2) = xAxis.z();
-    m_View(1, 0) = yAxis.x(); m_View(1, 1) = yAxis.y(); m_View(1, 2) = yAxis.z();
-    m_View(2, 0) = zAxis.x(); m_View(2, 1) = zAxis.y(); m_View(2, 2) = zAxis.z();
+    // 2. Construir las rotaciones inversas (típico en cámara)
+    //    Nota: si tu rotación “física” era glRotatef(xRot,1,0,0), en la matriz de vista
+    //    se suele usar la rotación con signo invertido.
+    Eigen::Matrix3f rotX = Eigen::AngleAxisf(xAngleRad, Eigen::Vector3f::UnitX()).toRotationMatrix();
+    Eigen::Matrix3f rotY = Eigen::AngleAxisf(yAngleRad, Eigen::Vector3f::UnitY()).toRotationMatrix();
 
-    m_View(0, 3) = -xAxis.dot(m_Position);
-    m_View(1, 3) = -yAxis.dot(m_Position);
-    m_View(2, 3) = -zAxis.dot(m_Position);
+    // Multiplicamos rotY * rotX -> primero se aplica X, luego Y. Ajusta según tu orden deseado.
+    Eigen::Matrix3f rotTotal = rotY * rotX;
+
+    // 3. Construir la traslación inversa
+    //    T(-m_Position)
+    Eigen::Affine3f affine = Eigen::Affine3f::Identity();
+    // “Acumulamos” la traslación en la transformación
+    affine.translate(-m_Position);
+
+    // 4. Combinar en una 4x4
+    //    Recuerda que .matrix() te da la 4x4, pero rotTotal es 3x3 -> se puede
+    //    hacer una 4x4 unidad e inyectar la parte rotacional.
+    Eigen::Matrix4f matRot = Eigen::Matrix4f::Identity();
+    matRot.block<3, 3>(0, 0) = rotTotal;
+
+    Eigen::Matrix4f matTrans = affine.matrix();
+
+    // La matriz de vista final = rot * trans (inversa de T * R)
+    m_View = matTrans * matRot;
+
+    /*
+    m_View = LookAt(
+        Eigen::Vector3f(0, 0, -3),  // eye
+        Eigen::Vector3f(0, 0, 0),   // center
+        Eigen::Vector3f(0, 1, 0)    // up
+    );
+    */
 }
+
 
 void Camera::UpdateProjectionMatrix()
 {
