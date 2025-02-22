@@ -6,7 +6,7 @@
 
 
 Camera::Camera()
-    : m_Position(0.0f, 0.0f, 5.0f)
+    : m_Position(0.0f, 0.0f, 15.0f)
     , m_Rotation(15.0f, 0.0f)
     , m_Up(0.0f, 1.0f, 0.0f)
     , m_Target(0.0f, 0.0f, 0.0f)
@@ -57,7 +57,8 @@ void Camera::UpdateViewMatrix()
     Eigen::Matrix3f rotY = Eigen::AngleAxisf(yAngleRad, Eigen::Vector3f::UnitY()).toRotationMatrix();
 
     // Multiplicamos rotY * rotX -> primero se aplica X, luego Y. Ajusta según tu orden deseado.
-    Eigen::Matrix3f rotTotal = rotY * rotX;
+    //Eigen::Matrix3f rotTotal = rotY * rotX;
+    Eigen::Matrix3f rotTotal = rotX * rotY;
 
     // 3. Construir la traslación inversa
     //    T(-m_Position)
@@ -75,6 +76,8 @@ void Camera::UpdateViewMatrix()
 
     // La matriz de vista final = rot * trans (inversa de T * R)
     m_View = matTrans * matRot;
+
+    //m_View = matRot * matTrans;
 
     /*
     m_View = LookAt(
