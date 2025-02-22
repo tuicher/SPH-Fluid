@@ -1,5 +1,5 @@
-// Application.cpp
-#include "Application.h"
+// Renderer.cpp
+#include "Renderer.h"
 #include <memory>
 #include "Camera.h"
 #include "Shader.h"
@@ -34,7 +34,7 @@ void main()
 }
 )";
 
-Application::Application(int width, int height, const char* title)
+Renderer::Renderer(int width, int height, const char* title)
     : m_Width(width)
     , m_Height(height)
     , m_FpsSamples(MAX_FPS_SAMPLES, 0.0f)
@@ -58,12 +58,12 @@ Application::Application(int width, int height, const char* title)
     m_Camera.SetAspectRatio((float)m_Width / (float)m_Height);
 }
 
-Application::~Application()
+Renderer::~Renderer()
 {
     Cleanup();
 }
 
-bool Application::InitGLFW(int width, int height, const char* title)
+bool Renderer::InitGLFW(int width, int height, const char* title)
 {
     if (!glfwInit())
     {
@@ -96,7 +96,7 @@ bool Application::InitGLFW(int width, int height, const char* title)
     return true;
 }
 
-void Application::InitOpenGL()
+void Renderer::InitOpenGL()
 {
     // Cargar funciones OpenGL con GLAD
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
@@ -112,7 +112,7 @@ void Application::InitOpenGL()
     m_ImGuiLayer.Init(m_Window);
 }
 
-void Application::InitScene()
+void Renderer::InitScene()
 {
     // Compilar y linkear shader
     bool success = m_Shader.CreateShaderProgramFromFiles(
@@ -132,7 +132,7 @@ void Application::InitScene()
     m_Sphere->Setup();
 }
 
-void Application::Cleanup()
+void Renderer::Cleanup()
 {
     m_ImGuiLayer.Shutdown();
 
@@ -144,7 +144,7 @@ void Application::Cleanup()
     glfwTerminate();
 }
 
-void Application::Run()
+void Renderer::Run()
 {
     SPH_System sph = SPH_System();
     
@@ -269,10 +269,10 @@ void Application::Run()
     }
 }
 
-void Application::FramebufferSizeCallback(GLFWwindow* window, int width, int height)
+void Renderer::FramebufferSizeCallback(GLFWwindow* window, int width, int height)
 {
     // Recuperamos el puntero a la instancia
-    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+    Renderer* app = static_cast<Renderer*>(glfwGetWindowUserPointer(window));
     if (app)
     {
         app->m_Width = width;
@@ -282,10 +282,10 @@ void Application::FramebufferSizeCallback(GLFWwindow* window, int width, int hei
     }
 }
 
-void Application::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+void Renderer::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
     // Recuperar el puntero a la instancia de la clase
-    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+    Renderer* app = static_cast<Renderer*>(glfwGetWindowUserPointer(window));
     if (app)
     {
         // Delegamos la lógica a un método no estático
@@ -293,7 +293,7 @@ void Application::KeyCallback(GLFWwindow* window, int key, int scancode, int act
     }
 }
 
-void Application::HandleKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+void Renderer::HandleKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
     // Solo actuar en el momento en que se presiona la tecla
     if (action == GLFW_PRESS || action == GLFW_REPEAT)
@@ -325,9 +325,9 @@ void Application::HandleKeyCallback(GLFWwindow* window, int key, int scancode, i
     }
 }
 
-void Application::MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+void Renderer::MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 {
-    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+    Renderer* app = static_cast<Renderer*>(glfwGetWindowUserPointer(window));
     if (app)
     {
         // Delegamos la lógica a un método no estático
@@ -335,7 +335,7 @@ void Application::MouseButtonCallback(GLFWwindow* window, int button, int action
     }
 }
 
-void Application::HandleMouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+void Renderer::HandleMouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 {
     if (button == GLFW_MOUSE_BUTTON_LEFT)
     {
@@ -350,16 +350,16 @@ void Application::HandleMouseButtonCallback(GLFWwindow* window, int button, int 
     }
 }
 
-void Application::CursorPosCallback(GLFWwindow* window, double xpos, double ypos)
+void Renderer::CursorPosCallback(GLFWwindow* window, double xpos, double ypos)
 {
-    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+    Renderer* app = static_cast<Renderer*>(glfwGetWindowUserPointer(window));
     if (app)
     {
         app->HandleCursorPosCallback(window, xpos, ypos);
     }
 }
 
-void Application::HandleCursorPosCallback(GLFWwindow* window, double xpos, double ypos)
+void Renderer::HandleCursorPosCallback(GLFWwindow* window, double xpos, double ypos)
 {
     // dx, dy
     double dx = xpos - ox;

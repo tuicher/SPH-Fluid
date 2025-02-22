@@ -1,4 +1,4 @@
-// Application.h
+// Renderer.h
 #pragma once
 
 #include <glad/glad.h>
@@ -23,11 +23,11 @@
 
 
 
-class Application
+class Renderer
 {
 public:
-    Application(int width, int height, const char* title);
-    ~Application();
+    Renderer(int width, int height, const char* title);
+    ~Renderer();
 
     void Run();
 
