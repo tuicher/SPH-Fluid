@@ -21,6 +21,8 @@
 //Defines
 #define D_TRANSLATION 0.2f
 
+
+
 class Application
 {
 public:
@@ -70,6 +72,7 @@ private:
     std::vector<float> m_FpsSamples;
     int m_SampleIndex = 0;
 
+    // Primitives
     std::unique_ptr<Cube>   m_Cube;
     std::unique_ptr<Sphere> m_Sphere;
 };

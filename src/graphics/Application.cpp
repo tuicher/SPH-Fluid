@@ -6,6 +6,7 @@
 #include "../support/ImGuiLayer.h"
 #include "../geometry/Cube.h"
 #include "../geometry/Sphere.h"
+#include "../physics/SPH_System.h"
 
 static const char* vertexShaderSource = R"(
 #version 330 core
@@ -127,7 +128,7 @@ void Application::InitScene()
     m_Cube = std::make_unique<Cube>();
     m_Cube->Setup();
 
-    m_Sphere = std::make_unique<Sphere>(0.5f, 16, 16);
+    m_Sphere = std::make_unique<Sphere>(0.1f, 6, 6);
     m_Sphere->Setup();
 }
 
@@ -145,6 +146,8 @@ void Application::Cleanup()
 
 void Application::Run()
 {
+    SPH_System sph = SPH_System();
+    
     while (!glfwWindowShouldClose(m_Window))
     {
         // 1) Procesar eventos de la ventana
@@ -186,7 +189,7 @@ void Application::Run()
         // 1) Calcular model
         Eigen::Matrix4f model = Eigen::Matrix4f::Identity();
 
-        model *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
+        //model *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
         model *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 0.0f, 0.0f)).matrix();
 
         // 2) Calcular view y projection (obtenid os de tu cámara)
@@ -211,12 +214,40 @@ void Application::Run()
         m_Shader.SetVector3f("uLightColor", Eigen::Vector3f(1.0f, 1.0f, 1.0f));
 
         // 6) Dibujar
-        m_Cube->Draw();
+        //m_Cube->Draw();
 
+        int dx = 10;
+        int dy = 10;
+        int dz = 10;
+
+        for (int i = -dx; i < dx; i++)
+        {
+            for (int j = -dx; j < dy; j++)
+            {
+                for (int k = -dx; k < dy; k++)
+                {
+                    Eigen::Matrix4f modelSphere = Eigen::Matrix4f::Identity();
+
+                    //modelSphere *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
+                    modelSphere *= Eigen::Affine3f(Eigen::Translation3f(0.2f * i, 0.2f * j, 0.2f * k)).matrix();
+
+                    Eigen::Matrix4f mvpSphere = projection * view * modelSphere;
+                    Eigen::Matrix3f normalSphere = modelSphere.topLeftCorner<3, 3>().inverse().transpose();
+
+                    m_Shader.SetMatrix4("uModel", modelSphere);
+                    m_Shader.SetMatrix4("uMVP", mvpSphere);
+                    m_Shader.SetMatrix3("uNormalMat", normalSphere);
+
+                    m_Shader.SetVector3f("uObjectColor", Eigen::Vector3f((1.0f / dx) * i, (1.0f / dy) * j, (1.0f / dz) * k));
+
+                    m_Sphere->Draw();
+                }
+            }
+        }
         // Dibujar la esfera, movida en X para no superponerse
         Eigen::Matrix4f modelSphere = Eigen::Matrix4f::Identity();
 
-        modelSphere *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
+        //modelSphere *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
         modelSphere *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 1.0f, 0.0f)).matrix();
 
         Eigen::Matrix4f mvpSphere = projection * view * modelSphere;
