@@ -8,7 +8,7 @@
 #include "../geometry/Sphere.h"
 #include "../physics/SPH_System.h"
 
-static const char* vertexShaderSource = R"(
+static const char* vertexShaderInCode = R"(
 #version 330 core
 layout (location = 0) in vec3 aPos;
 
@@ -20,17 +20,17 @@ void main()
 }
 )";
 
-static const char* fragmentShaderSource = R"(
+static const char* fragmentShaderInCode = R"(
 #version 330 core
 out vec4 FragColor;
 
 // Uniform con el color
-uniform vec3 uColor;
+uniform vec3 uObjectColor;
 
 void main()
 {
     // alpha=1, color base
-    FragColor = vec4(uColor, 1.0);
+    FragColor = vec4(uObjectColor, 1.0);
 }
 )";
 
@@ -123,12 +123,13 @@ void Renderer::InitScene()
     if (!success)
     {
         std::cerr << "Error al crear el shader program desde ficheros\n";
+        m_Shader.CreateShaderProgram( vertexShaderInCode, fragmentShaderInCode);
     }
 
     m_Cube = std::make_unique<Cube>();
     m_Cube->Setup();
 
-    m_Sphere = std::make_unique<Sphere>(0.1f, 6, 6);
+    m_Sphere = std::make_unique<Sphere>(1.0f, 16, 16);
     m_Sphere->Setup();
 }
 
@@ -186,36 +187,36 @@ void Renderer::Run()
 
         // Crear la matriz Model (rotación, por ejemplo)
         float time = static_cast<float>(glfwGetTime());
-        // 1) Calcular model
         Eigen::Matrix4f model = Eigen::Matrix4f::Identity();
 
         //model *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
         model *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 0.0f, 0.0f)).matrix();
+        model *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
+        model *= Eigen::Affine3f(Eigen::AngleAxisf(time * 0.25f, Eigen::Vector3f::UnitZ())).matrix();
+        //model *= Eigen::Affine3f(Eigen::UniformScaling(15.0f)).matrix();
 
-        // 2) Calcular view y projection (obtenid os de tu cámara)
         Eigen::Matrix4f view = m_Camera.GetViewMatrix();
         Eigen::Matrix4f projection = m_Camera.GetProjectionMatrix();
 
-        // 3) Calcular MVP
         Eigen::Matrix4f mvp = projection * view * model;
 
         // 4) Calcular Normal Matrix (3x3)
-        Eigen::Matrix3f normalMat = model.topLeftCorner<3, 3>().inverse().transpose();
+        Eigen::Matrix3f normalMat = model.topLeftCorner<3, 3>().transpose().inverse();
 
         // 5) Subir al shader
         m_Shader.Use();
         m_Shader.SetMatrix4("uModel", model);
         m_Shader.SetMatrix4("uMVP", mvp);
         m_Shader.SetMatrix3("uNormalMat", normalMat);
-
-        // Otros uniforms
-        m_Shader.SetVector3f("uObjectColor", m_Cube->GetColor());
-        m_Shader.SetVector3f("uLightPos", Eigen::Vector3f(1.0f, 1.0f, 1.0f));
+        m_Shader.SetVector3f("uViewPos", m_Camera.GetPosition());
+        m_Shader.SetVector3f("uLightPos", Eigen::Vector3f(30.0f, 30.0f, 30.0f));
         m_Shader.SetVector3f("uLightColor", Eigen::Vector3f(1.0f, 1.0f, 1.0f));
+        m_Shader.SetVector3f("uObjectColor", m_Sphere->GetColor());
 
         // 6) Dibujar
-        //m_Cube->Draw();
-
+        m_Sphere->Draw();
+        /*
+        
         int dx = 10;
         int dy = 10;
         int dz = 10;
@@ -244,11 +245,13 @@ void Renderer::Run()
                 }
             }
         }
+        
         // Dibujar la esfera, movida en X para no superponerse
         Eigen::Matrix4f modelSphere = Eigen::Matrix4f::Identity();
 
         //modelSphere *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
-        modelSphere *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 1.0f, 0.0f)).matrix();
+        modelSphere *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 0.0f, 0.0f)).matrix();
+        modelSphere *= Eigen::Affine3f(Eigen::UniformScaling(15.0f)).matrix();
 
         Eigen::Matrix4f mvpSphere = projection * view * modelSphere;
         Eigen::Matrix3f normalSphere = modelSphere.topLeftCorner<3, 3>().inverse().transpose();
@@ -256,11 +259,10 @@ void Renderer::Run()
         m_Shader.SetMatrix4("uModel", modelSphere);
         m_Shader.SetMatrix4("uMVP", mvpSphere);
         m_Shader.SetMatrix3("uNormalMat", normalSphere);
+        m_Shader.SetVector3f("uObjectColor", m_Cube->GetColor());
 
-        m_Shader.SetVector3f("uObjectColor", m_Sphere->GetColor());
-
-        m_Sphere->Draw();
-
+        m_Cube->Draw();
+        */
         // 6) Finalizar frame de ImGui
         m_ImGuiLayer.EndFrame();
 
