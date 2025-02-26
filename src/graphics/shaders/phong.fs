@@ -12,26 +12,22 @@ uniform vec3 uObjectColor;
 
 void main()
 {
-    // 1) Ambient
+    vec3 N = normalize(vNormal);
+    vec3 L = normalize(uLightPos - vWorldPos);
+
     float ambientStrength = 0.2;
     vec3 ambient = ambientStrength * uLightColor;
 
-    // 2) Diffuse
-    vec3 norm = normalize(vNormal);
-    vec3 lightDir = normalize(uLightPos - vWorldPos);
-    float diff = max(dot(norm, lightDir), 0.0);
-    vec3 diffuse = diff * uLightColor;
+    float lambertian = max(dot(N, L), 0.0);
+    float specular = 0.0;
+    
+    if(lambertian > 0.0)
+    {
+        vec3 R = reflect(-L, N);
+        vec3 V = normalize(-vWorldPos);
+        float specAngle = max(dot(R, V), 0.0);
+        specular = pow(specAngle, 32);
+    }
 
-    // 3) Specular
-    float specularStrength = 0.5;
-    vec3 viewDir = normalize(uViewPos - vWorldPos);
-    vec3 reflectDir = reflect(-lightDir, norm);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
-    vec3 specular = specularStrength * spec * uLightColor;
-
-    //vec3 result = (ambient + diffuse + specular) * uObjectColor;
-    vec3 result = (ambient + diffuse) * uObjectColor;
-
-    //vec3 result = vNormal;
-    FragColor = vec4(result, 1.0);
+    gl_FragColor = vec4( (ambient + 0.5 * lambertian + specular) * uObjectColor, 1.0);
 }

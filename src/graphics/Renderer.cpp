@@ -205,11 +205,11 @@ void Renderer::Run()
 
         // 5) Subir al shader
         m_Shader.Use();
-        m_Shader.SetMatrix4("uModel", model);
-        m_Shader.SetMatrix4("uMVP", mvp);
+        m_Shader.SetMatrix4("uModelView", view * model);
+        m_Shader.SetMatrix4("uProjection", projection);
         m_Shader.SetMatrix3("uNormalMat", normalMat);
-        m_Shader.SetVector3f("uViewPos", m_Camera.GetPosition());
-        m_Shader.SetVector3f("uLightPos", Eigen::Vector3f(30.0f, 30.0f, 30.0f));
+        //m_Shader.SetVector3f("uViewPos", m_Camera.GetPosition());
+        m_Shader.SetVector3f("uLightPos", Eigen::Vector3f(30.0f, 30.0f * sin(time), 30.0f * cos(time)));
         m_Shader.SetVector3f("uLightColor", Eigen::Vector3f(1.0f, 1.0f, 1.0f));
         m_Shader.SetVector3f("uObjectColor", m_Sphere->GetColor());
 

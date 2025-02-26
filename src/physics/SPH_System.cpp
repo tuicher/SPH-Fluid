@@ -109,6 +109,7 @@ void SPH_System::AddParticle(Eigen::Vector3f pos, Eigen::Vector3f vel)
 
 	p->acc = Eigen::Vector3f(0.0f, 0.0f, 0.0f);
 	p->ev = Eigen::Vector3f(0.0f, 0.0f, 0.0f);
+	p->color = Eigen::Vector3f(0.0f, 0.0f, 0.0f);
 
 	p->dens = restDensity;
 	p->pres = 0.0f;

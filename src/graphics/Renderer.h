@@ -18,10 +18,8 @@
 #include "../geometry/Cube.h"
 #include "../geometry/Sphere.h"
 
-//Defines
+// DEFINES
 #define D_TRANSLATION 0.2f
-
-
 
 class Renderer
 {
@@ -46,7 +44,7 @@ private:
 
     static void CursorPosCallback(GLFWwindow* window, double xpos, double ypos);
     void HandleCursorPosCallback(GLFWwindow* window, double xpos, double ypos);
-private:
+
     GLFWwindow* m_Window = nullptr;
     int m_Width;
     int m_Height;

@@ -2,20 +2,17 @@
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
 
-uniform mat4 uMVP;
-uniform mat4 uModel;    // para transformar normales en espacio mundo/objeto
-uniform mat3 uNormalMat; // matriz de normales (inversa transpuesta de model)
+uniform mat4 uModelView;
+uniform mat4 uProjection;
+uniform mat3 uNormalMat;
 
 out vec3 vNormal;       // la normal en el FS
 out vec3 vWorldPos;     // posición en espacio mundo (opcional)
 
 void main()
 {
-    gl_Position = uMVP * vec4(aPos, 1.0);
-
+    vec4 vertPos4 = uModelView * vec4(aPos, 1.0);
+    vWorldPos = vec3(vertPos4) / vertPos4.w;
     vNormal = normalize(uNormalMat * aNormal);
-    //vNormal = normalize(aNormal);
-
-    vec4 worldPos = uModel * vec4(aPos, 1.0);
-    vWorldPos = worldPos.xyz;
+    gl_Position = uProjection * vertPos4;
 }

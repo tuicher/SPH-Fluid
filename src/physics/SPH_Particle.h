@@ -12,6 +12,8 @@ struct Particle
 	Eigen::Vector3f acc;
 	Eigen::Vector3f ev;
 
+	Eigen::Vector3f color;
+
 	float dens;
 	float pres;
 
