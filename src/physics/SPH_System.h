@@ -7,7 +7,6 @@ class SPH_System
 {
 private:
 	uint maxParticles;
-	uint numParticles;
 
 	float kernel;
 	float mass;
@@ -37,7 +36,7 @@ private:
 	float self_dens;
 	float self_lplc_color;
 
-	Particle* mem;
+	
 	Particle** cell;
 
 	uint sys_running;
@@ -49,6 +48,8 @@ public:
 	void InitSystem();
 	void AddParticle(Eigen::Vector3f pos, Eigen::Vector3f vel);
 
+	Particle* mem;
+	uint numParticles;
 private:
 	void BuildTable();
 	void Comp_DensPres();

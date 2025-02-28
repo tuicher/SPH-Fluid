@@ -129,7 +129,7 @@ void Renderer::InitScene()
     m_Cube = std::make_unique<Cube>();
     m_Cube->Setup();
 
-    m_Sphere = std::make_unique<Sphere>(1.0f, 16, 16);
+    m_Sphere = std::make_unique<Sphere>(0.005f, 6, 6);
     m_Sphere->Setup();
 }
 
@@ -148,6 +148,7 @@ void Renderer::Cleanup()
 void Renderer::Run()
 {
     SPH_System sph = SPH_System();
+    sph.InitSystem();
     
     while (!glfwWindowShouldClose(m_Window))
     {
@@ -185,36 +186,39 @@ void Renderer::Run()
         // Usar tu shader
         m_Shader.Use();
 
-        // Crear la matriz Model (rotación, por ejemplo)
-        float time = static_cast<float>(glfwGetTime());
-        Eigen::Matrix4f model = Eigen::Matrix4f::Identity();
-
-        //model *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
-        model *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 0.0f, 0.0f)).matrix();
-        model *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
-        model *= Eigen::Affine3f(Eigen::AngleAxisf(time * 0.25f, Eigen::Vector3f::UnitZ())).matrix();
-        //model *= Eigen::Affine3f(Eigen::UniformScaling(15.0f)).matrix();
-
         Eigen::Matrix4f view = m_Camera.GetViewMatrix();
         Eigen::Matrix4f projection = m_Camera.GetProjectionMatrix();
-
-        Eigen::Matrix4f mvp = projection * view * model;
-
-        // 4) Calcular Normal Matrix (3x3)
-        Eigen::Matrix3f normalMat = model.topLeftCorner<3, 3>().transpose().inverse();
-
-        // 5) Subir al shader
-        m_Shader.Use();
-        m_Shader.SetMatrix4("uModelView", view * model);
         m_Shader.SetMatrix4("uProjection", projection);
-        m_Shader.SetMatrix3("uNormalMat", normalMat);
-        //m_Shader.SetVector3f("uViewPos", m_Camera.GetPosition());
+
+        // Posición de la luz
+        float time = static_cast<float>(glfwGetTime());
         m_Shader.SetVector3f("uLightPos", Eigen::Vector3f(30.0f, 30.0f * sin(time), 30.0f * cos(time)));
         m_Shader.SetVector3f("uLightColor", Eigen::Vector3f(1.0f, 1.0f, 1.0f));
-        m_Shader.SetVector3f("uObjectColor", m_Sphere->GetColor());
+        
 
-        // 6) Dibujar
-        m_Sphere->Draw();
+        // Dibujar todas las esferas en sus posiciones
+        for (uint i = 0; i < sph.numParticles; ++i)
+        {
+            Eigen::Matrix4f model = Eigen::Matrix4f::Identity();
+
+            auto position = sph.mem[i].pos;
+
+            // Aplicar traslación a la posición de la esfera
+            model *= Eigen::Affine3f(Eigen::Translation3f(position)).matrix();
+            //model *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
+
+            Eigen::Matrix3f normalMat = model.topLeftCorner<3, 3>().inverse().transpose();
+
+            // Subir matrices al shader
+            m_Shader.SetMatrix4("uModelView", view * model);
+            m_Shader.SetMatrix3("uNormalMat", normalMat);
+
+            // Color basado en la posición
+            m_Shader.SetVector3f("uObjectColor", sph.mem[i].color);
+
+            // Dibujar la esfera
+            m_Sphere->Draw();
+        }
         /*
         
         int dx = 10;
