@@ -41,10 +41,12 @@ void ImGuiLayer::ShowInfoPanel(AppInfo& info)
     // Slider para modificar el FOV
     ImGui::SliderFloat("FOV", &info.fov, 1.0f, 180.0f);
 
-    // Tomamos el FPS actual de la posición 'sampleIdx'
-    float currentFps = (info.sampleIdx < info.fpsSamples.size())
-        ? info.fpsSamples[info.sampleIdx]
+    // Tomamos el FPS de la última muestra almacenada
+    int lastSampleIdx = (info.sampleIdx == 0) ? info.fpsSamples.size() - 1 : info.sampleIdx - 1;
+    float currentFps = (lastSampleIdx < info.fpsSamples.size())
+        ? info.fpsSamples[lastSampleIdx]
         : 0.0f;
+
     ImGui::Text("FPS: %.3f", currentFps);
 
     // Graficamos la línea de FPS
@@ -64,3 +66,4 @@ void ImGuiLayer::ShowInfoPanel(AppInfo& info)
 
     ImGui::End();
 }
+

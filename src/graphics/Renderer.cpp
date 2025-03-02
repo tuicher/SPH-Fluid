@@ -126,7 +126,7 @@ void Renderer::InitScene()
     m_Cube = std::make_unique<Cube>();
     m_Cube->Setup();
 
-    m_Sphere = std::make_unique<Sphere>(0.01f, 6, 6);
+    m_Sphere = std::make_unique<Sphere>(0.01f, 4, 4);
     m_Sphere->Setup();
 
 }

@@ -83,15 +83,20 @@ void SPH_System::Animation()
 void SPH_System::InitSystem()
 {
 	Eigen::Vector3f pos;
-	Eigen::Vector3f vel = Eigen::Vector3f( 0.0f, 0.0f, 0.0f);
+	Eigen::Vector3f vel = Eigen::Vector3f(0.0f, 0.0f, 0.0f);
 
-	for (pos.x() = worldSize.x() * 0.5f; pos.x() < worldSize.x() * 0.9f; pos.x() += (kernel * 0.5f))
+	// Definir el área de spawn centrada en 0,0,0
+	float halfX = worldSize.x() * 0.3f; // Reducimos la escala para evitar que partículas inicien fuera
+	float halfY = worldSize.y() * 0.3f;
+	float halfZ = worldSize.z() * 0.3f;
+
+	for (pos.x() = -halfX; pos.x() < halfX; pos.x() += (kernel * 0.5f))
 	{
-		for (pos.y() = worldSize.y() * 0.5f; pos.y() < worldSize.y() * 0.9f; pos.y() += (kernel * 0.5f))
+		for (pos.y() = -halfY; pos.y() < halfY; pos.y() += (kernel * 0.5f))
 		{
-			for (pos.z() = worldSize.z() * 0.5f; pos.z() < worldSize.z() * 0.9f; pos.z() += (kernel * 0.5f))
+			for (pos.z() = -halfZ; pos.z() < halfZ; pos.z() += (kernel * 0.5f))
 			{
-				AddParticle( pos, vel);
+				AddParticle(pos, vel);
 			}
 		}
 	}
@@ -336,40 +341,42 @@ void SPH_System::Advection()
 		p->pos.y() = p->pos.y() + p->vel.y() * timeStep;
 		p->pos.z() = p->pos.z() + p->vel.z() * timeStep;
 
-		if (p->pos.x() >= worldSize.x() - BOUNDARY)
+		// Ajustamos las colisiones para que se apliquen en un espacio centrado en 0,0,0
+		float boundaryX = worldSize.x() * 0.5f - BOUNDARY;
+		float boundaryY = worldSize.y() * 0.5f - BOUNDARY;
+		float boundaryZ = worldSize.z() * 0.5f - BOUNDARY;
+
+		if (p->pos.x() >= boundaryX)
 		{
 			p->vel.x() = p->vel.x() * wallDamping;
-			p->pos.x() = worldSize.x() - BOUNDARY;
+			p->pos.x() = boundaryX;
 		}
-
-		if (p->pos.x() < 0.0f)
+		if (p->pos.x() <= -boundaryX)
 		{
 			p->vel.x() = p->vel.x() * wallDamping;
-			p->pos.x() = 0.0f;
+			p->pos.x() = -boundaryX;
 		}
 
-		if (p->pos.y() >= worldSize.y() - BOUNDARY)
+		if (p->pos.y() >= boundaryY)
 		{
 			p->vel.y() = p->vel.y() * wallDamping;
-			p->pos.y() = worldSize.y() - BOUNDARY;
+			p->pos.y() = boundaryY;
 		}
-
-		if (p->pos.y() < 0.0f)
+		if (p->pos.y() <= -boundaryY)
 		{
 			p->vel.y() = p->vel.y() * wallDamping;
-			p->pos.y() = 0.0f;
+			p->pos.y() = -boundaryY;
 		}
 
-		if (p->pos.z() >= worldSize.z() - BOUNDARY)
+		if (p->pos.z() >= boundaryZ)
 		{
 			p->vel.z() = p->vel.z() * wallDamping;
-			p->pos.z() = worldSize.z() - BOUNDARY;
+			p->pos.z() = boundaryZ;
 		}
-
-		if (p->pos.z() < 0.0f)
+		if (p->pos.z() <= -boundaryZ)
 		{
 			p->vel.z() = p->vel.z() * wallDamping;
-			p->pos.z() = 0.0f;
+			p->pos.z() = -boundaryZ;
 		}
 
 		p->ev.x() = (p->ev.x() + p->vel.x()) / 2;
@@ -381,9 +388,9 @@ void SPH_System::Advection()
 Eigen::Vector3i SPH_System::Calc_CellPos(Eigen::Vector3f p)
 {
 	Eigen::Vector3i cellPos = Eigen::Vector3i(
-		int(floor((p.x()) / cellSize)),
-		int(floor((p.y()) / cellSize)),
-		int(floor((p.z()) / cellSize))
+		int(floor((p.x() + worldSize.x() * 0.5f) / cellSize)),
+		int(floor((p.y() + worldSize.y() * 0.5f) / cellSize)),
+		int(floor((p.z() + worldSize.z() * 0.5f) / cellSize))
 	);
 
 	return cellPos;
