@@ -39,8 +39,6 @@ private:
 	
 	Particle** cell;
 
-	uint sys_running;
-
 public:
 	SPH_System();
 	~SPH_System();
@@ -50,6 +48,9 @@ public:
 
 	Particle* mem;
 	uint numParticles;
+
+	uint sys_running;
+
 private:
 	void BuildTable();
 	void Comp_DensPres();

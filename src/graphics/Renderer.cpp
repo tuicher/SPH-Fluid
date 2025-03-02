@@ -1,12 +1,5 @@
 // Renderer.cpp
 #include "Renderer.h"
-#include <memory>
-#include "Camera.h"
-#include "Shader.h"
-#include "../support/ImGuiLayer.h"
-#include "../geometry/Cube.h"
-#include "../geometry/Sphere.h"
-#include "../physics/SPH_System.h"
 
 static const char* vertexShaderInCode = R"(
 #version 330 core
@@ -40,6 +33,7 @@ Renderer::Renderer(int width, int height, const char* title)
     , m_FpsSamples(MAX_FPS_SAMPLES, 0.0f)
     , xRotLength(0.0f)
     , yRotLength(0.0f)
+    , m_SPHSystem()
 {
     if (!InitGLFW(width, height, title))
     {
@@ -53,6 +47,9 @@ Renderer::Renderer(int width, int height, const char* title)
 
     InitOpenGL();
     InitScene();
+
+    // Inicializar el sistema de partículas
+    m_SPHSystem.InitSystem();
 
     // Ajustar la cámara a la ventana inicial
     m_Camera.SetAspectRatio((float)m_Width / (float)m_Height);
@@ -129,8 +126,9 @@ void Renderer::InitScene()
     m_Cube = std::make_unique<Cube>();
     m_Cube->Setup();
 
-    m_Sphere = std::make_unique<Sphere>(0.005f, 6, 6);
+    m_Sphere = std::make_unique<Sphere>(0.01f, 6, 6);
     m_Sphere->Setup();
+
 }
 
 void Renderer::Cleanup()
@@ -146,10 +144,7 @@ void Renderer::Cleanup()
 }
 
 void Renderer::Run()
-{
-    SPH_System sph = SPH_System();
-    sph.InitSystem();
-    
+{   
     while (!glfwWindowShouldClose(m_Window))
     {
         // 1) Procesar eventos de la ventana
@@ -169,12 +164,13 @@ void Renderer::Run()
         // Opcional: si tu cámara requiere el FOV, puedes setearlo aquí
         m_Camera.SetFOV(m_AppInfo.fov);
 
+        m_SPHSystem.Animation();
+
         // 5) Renderizado de la escena
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        glClearColor(0.278f, 0.278f, 0.278f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // Camera movement
-
         if (buttonState == 1)
         {
             float newXRot = m_Camera.GetRotation().x() + ((xRotLength - m_Camera.GetRotation().x()) * 0.1f);
@@ -192,16 +188,16 @@ void Renderer::Run()
 
         // Posición de la luz
         float time = static_cast<float>(glfwGetTime());
-        m_Shader.SetVector3f("uLightPos", Eigen::Vector3f(30.0f, 30.0f * sin(time), 30.0f * cos(time)));
+        m_Shader.SetVector3f("uLightPos", Eigen::Vector3f(10.0f, 10.0f, 10.0f));
         m_Shader.SetVector3f("uLightColor", Eigen::Vector3f(1.0f, 1.0f, 1.0f));
         
 
         // Dibujar todas las esferas en sus posiciones
-        for (uint i = 0; i < sph.numParticles; ++i)
+        for (uint i = 0; i < m_SPHSystem.numParticles; ++i)
         {
             Eigen::Matrix4f model = Eigen::Matrix4f::Identity();
 
-            auto position = sph.mem[i].pos;
+            auto position = m_SPHSystem.mem[i].pos;
 
             // Aplicar traslación a la posición de la esfera
             model *= Eigen::Affine3f(Eigen::Translation3f(position)).matrix();
@@ -214,7 +210,7 @@ void Renderer::Run()
             m_Shader.SetMatrix3("uNormalMat", normalMat);
 
             // Color basado en la posición
-            m_Shader.SetVector3f("uObjectColor", sph.mem[i].color);
+            m_Shader.SetVector3f("uObjectColor", m_SPHSystem.mem[i].color);
 
             // Dibujar la esfera
             m_Sphere->Draw();
@@ -325,8 +321,8 @@ void Renderer::HandleKeyCallback(GLFWwindow* window, int key, int scancode, int 
         }
         if (key == GLFW_KEY_SPACE) {
             // Ejemplo: invertir sistema en marcha/parada
-            // sph->sys_running = 1 - sph->sys_running;
-            std::cout << "Presionaste SPACE (ejemplo)" << std::endl;
+            m_SPHSystem.sys_running = 1 - m_SPHSystem.sys_running;
+            std::cout << "Presionaste SPACE (ejemplo): " << m_SPHSystem.sys_running << std::endl;
         }
     }
 }

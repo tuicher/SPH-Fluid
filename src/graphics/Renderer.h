@@ -17,6 +17,7 @@
 #include "../support/ImGuiLayer.h"
 #include "../geometry/Cube.h"
 #include "../geometry/Sphere.h"
+#include "../physics/SPH_System.h"
 
 // DEFINES
 #define D_TRANSLATION 0.2f
@@ -73,4 +74,8 @@ private:
     // Primitives
     std::unique_ptr<Cube>   m_Cube;
     std::unique_ptr<Sphere> m_Sphere;
+
+
+    // SPH_Implementation
+    SPH_System m_SPHSystem;
 };
