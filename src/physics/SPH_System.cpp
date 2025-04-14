@@ -10,6 +10,8 @@ SPH_System::SPH_System()
 
 	worldSize = Eigen::Vector3f( 0.64f, 0.64f, 0.64f);
 
+	//worldSize = Eigen::Vector3f(2.54f, 2.54f, 2.54f);
+
 	cellSize = kernel;
 
 	gridSize = Eigen::Vector3i(
@@ -86,9 +88,9 @@ void SPH_System::InitSystem()
 	Eigen::Vector3f vel = Eigen::Vector3f(0.0f, 0.0f, 0.0f);
 
 	// Definir el área de spawn centrada en 0,0,0
-	float halfX = worldSize.x() * 0.3f; // Reducimos la escala para evitar que partículas inicien fuera
-	float halfY = worldSize.y() * 0.3f;
-	float halfZ = worldSize.z() * 0.3f;
+	float halfX = worldSize.x() * 0.25f; // Reducimos la escala para evitar que partículas inicien fuera
+	float halfY = worldSize.y() * 0.25f;
+	float halfZ = worldSize.z() * 0.25f;
 
 	for (pos.x() = -halfX; pos.x() < halfX; pos.x() += (kernel * 0.5f))
 	{
@@ -96,7 +98,8 @@ void SPH_System::InitSystem()
 		{
 			for (pos.z() = -halfZ; pos.z() < halfZ; pos.z() += (kernel * 0.5f))
 			{
-				AddParticle(pos, vel);
+				//AddParticle(pos, vel);
+				AddParticle(pos, vel, Eigen::Vector3f( abs(pos.x()) / halfX, abs(pos.y()) / halfY, abs(pos.z()) / halfZ));
 			}
 		}
 	}
@@ -120,6 +123,29 @@ void SPH_System::AddParticle(Eigen::Vector3f pos, Eigen::Vector3f vel)
 	p->pres = 0.0f;
 
 	p->next = NULL;
+
+	numParticles++;
+}
+
+void SPH_System::AddParticle(Eigen::Vector3f pos, Eigen::Vector3f vel, Eigen::Vector3f col)
+{
+
+	Particle* p = &(mem[numParticles]);
+
+	p->id = numParticles;
+	p->pos = pos;
+	p->vel = vel;
+
+	p->acc = Eigen::Vector3f(0.0f, 0.0f, 0.0f);
+	p->ev = Eigen::Vector3f(0.0f, 0.0f, 0.0f);
+	p->color = Eigen::Vector3f(0.0f, 0.5f, 1.0f);
+
+	p->dens = restDensity;
+	p->pres = 0.0f;
+
+	p->next = NULL;
+
+	p->color = col;
 
 	numParticles++;
 }

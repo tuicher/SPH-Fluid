@@ -18,6 +18,7 @@
 #include "../geometry/Cube.h"
 #include "../geometry/Sphere.h"
 #include "../physics/SPH_System.h"
+#include "../physics/PBF_System.h"
 
 // DEFINES
 #define D_TRANSLATION 0.2f
@@ -54,6 +55,8 @@ private:
     float xRotLength, yRotLength;
     int buttonState;
 
+    bool enableSimulation = false;
+
     AppInfo m_AppInfo;         // Info de la app (FOV, FPS, etc.)
 
     Camera m_Camera;
@@ -78,4 +81,8 @@ private:
 
     // SPH_Implementation
     SPH_System m_SPHSystem;
+    
+
+    // PBF_Implementation
+    PBF_System m_PBFSystem;
 };

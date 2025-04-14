@@ -45,6 +45,7 @@ public:
 	void Animation();
 	void InitSystem();
 	void AddParticle(Eigen::Vector3f pos, Eigen::Vector3f vel);
+	void SPH_System::AddParticle(Eigen::Vector3f pos, Eigen::Vector3f vel, Eigen::Vector3f col);
 
 	Particle* mem;
 	uint numParticles;

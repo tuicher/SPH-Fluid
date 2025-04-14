@@ -34,6 +34,7 @@ Renderer::Renderer(int width, int height, const char* title)
     , xRotLength(0.0f)
     , yRotLength(0.0f)
     , m_SPHSystem()
+    , m_PBFSystem()
 {
     if (!InitGLFW(width, height, title))
     {
@@ -126,7 +127,7 @@ void Renderer::InitScene()
     m_Cube = std::make_unique<Cube>();
     m_Cube->Setup();
 
-    m_Sphere = std::make_unique<Sphere>(0.01f, 4, 4);
+    m_Sphere = std::make_unique<Sphere>(0.025f, 3, 3);
     m_Sphere->Setup();
 
 }
@@ -152,6 +153,9 @@ void Renderer::Run()
 
         // 2) Comenzar un nuevo frame de ImGui
         m_ImGuiLayer.BeginFrame();
+
+        if (enableSimulation)
+            m_PBFSystem.AnimationStep();
 
         // 3) Actualizar FPS en m_AppInfo
         float fps = 1.0f / ImGui::GetIO().DeltaTime;
@@ -190,8 +194,29 @@ void Renderer::Run()
         float time = static_cast<float>(glfwGetTime());
         m_Shader.SetVector3f("uLightPos", Eigen::Vector3f(10.0f, 10.0f, 10.0f));
         m_Shader.SetVector3f("uLightColor", Eigen::Vector3f(1.0f, 1.0f, 1.0f));
-        
+        // PBF LOOP
+        const auto& particles = m_PBFSystem.getParticles();
 
+        for (uint i = 0; i < m_PBFSystem.getNumParticles(); ++i)
+        {
+            Eigen::Matrix4f model = Eigen::Matrix4f::Identity();
+
+            Vec3 pos = particles[i].x; // ó getParticlePosition(i)
+            Eigen::Vector3f position = pos.cast<float>();
+
+            model *= Eigen::Affine3f(Eigen::Translation3f(position)).matrix();
+
+            Eigen::Matrix3f normalMat = model.topLeftCorner<3, 3>().inverse().transpose();
+            // Subir matrices al shader
+            m_Shader.SetMatrix4("uModelView", view * model);
+            m_Shader.SetMatrix3("uNormalMat", normalMat);
+
+            m_Shader.SetVector3f("uObjectColor", particles[i].color);
+            m_Sphere->Draw();
+        }
+
+        /*
+        // SPH LOOP
         // Dibujar todas las esferas en sus posiciones
         for (uint i = 0; i < m_SPHSystem.numParticles; ++i)
         {
@@ -209,12 +234,29 @@ void Renderer::Run()
             m_Shader.SetMatrix4("uModelView", view * model);
             m_Shader.SetMatrix3("uNormalMat", normalMat);
 
-            // Color basado en la posición
+            float p = m_SPHSystem.mem[i].pres;
+
+            // Definir valores de presión mínima y máxima
+            float minPressure = 0.0f;
+            float maxPressure = 40.0f;
+
+            // Normalizar la presión entre 0 y 1
+            float normalizedP = (p - minPressure) / (maxPressure - minPressure);
+            normalizedP = std::clamp(normalizedP, 0.0f, 1.0f);
+
+            // Interpolación lineal entre verde y rojo
+            Eigen::Vector3f color = (1.0f - normalizedP) * Eigen::Vector3f(1.0f, 1.0f, 1.0f) + normalizedP * Eigen::Vector3f(0.0f, 0.0f, 1.0f);
+
+            // Aplicar el color en el shader
+            //m_Shader.SetVector3f("uObjectColor", color);
+
             m_Shader.SetVector3f("uObjectColor", m_SPHSystem.mem[i].color);
 
             // Dibujar la esfera
             m_Sphere->Draw();
         }
+        */
+
         /*
         
         int dx = 10;
@@ -321,7 +363,8 @@ void Renderer::HandleKeyCallback(GLFWwindow* window, int key, int scancode, int 
         }
         if (key == GLFW_KEY_SPACE) {
             // Ejemplo: invertir sistema en marcha/parada
-            m_SPHSystem.sys_running = 1 - m_SPHSystem.sys_running;
+            //m_SPHSystem.sys_running = 1 - m_SPHSystem.sys_running;
+            enableSimulation = !enableSimulation;
             std::cout << "Presionaste SPACE (ejemplo): " << m_SPHSystem.sys_running << std::endl;
         }
     }
