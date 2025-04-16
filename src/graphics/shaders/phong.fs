@@ -15,7 +15,7 @@ void main()
     vec3 N = normalize(vNormal);
     vec3 L = normalize(uLightPos - vWorldPos);
 
-    float ambientStrength = 0.2;
+    float ambientStrength = 0.5;
     vec3 ambient = ambientStrength * uLightColor;
 
     float lambertian = max(dot(N, L), 0.0);

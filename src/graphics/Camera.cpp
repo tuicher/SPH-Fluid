@@ -6,7 +6,7 @@
 
 
 Camera::Camera()
-    : m_Position(0.0f, 0.0f, 8.0f)
+    : m_Position(0.0f, 1.0f, 8.0f)
     , m_Rotation(15.0f, 0.0f)
     , m_Up(0.0f, 1.0f, 0.0f)
     , m_Target(0.0f, 0.0f, 0.0f)

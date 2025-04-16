@@ -70,6 +70,57 @@ void PBF_System::PrintAverageDensity()
     printf("Average(density): %d\n", buffer.mean());
 }
 
+void PBF_System::SetParticlesColors()
+{
+    // Calcular rango de Y para el gradiente
+    Scalar minY = std::numeric_limits<Scalar>::max();
+    Scalar maxY = std::numeric_limits<Scalar>::lowest();
+    for (const auto& p : particles)
+    {
+        Scalar y = p.x.y();
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+    }
+
+    // Evitar división por cero
+    if (maxY == minY) maxY += 1.0;
+
+    // Asignar colores en arcoíris según Y
+    for (auto& p : particles)
+    {
+        // Normalizar Y entre 0 y 1 (invertido para arriba-abajo)
+        Scalar t = (maxY - p.x.y()) / (maxY - minY);
+
+        // Convertir a HSV (Hue: 0°=rojo, 300°=magenta)
+        Scalar hue = t * 300.0;
+        Scalar s = 1.0, v = 1.0;
+        Scalar c = v * s;
+        Scalar h_prime = hue / 60.0;
+        Scalar x = c * (1 - std::abs(std::fmod(h_prime, 2.0) - 1.0));
+        Scalar m = v - c;
+
+        int i = static_cast<int>(h_prime) % 6;
+        Scalar r, g, b;
+
+        switch (i) {
+        case 0: r = c; g = x; b = 0; break;
+        case 1: r = x; g = c; b = 0; break;
+        case 2: r = 0; g = c; b = x; break;
+        case 3: r = 0; g = x; b = c; break;
+        case 4: r = x; g = 0; b = c; break;
+        case 5: r = c; g = 0; b = x; break;
+        default: r = g = b = 0; break;
+        }
+
+        // Ajustar brillo y asegurar rango [0,1]
+        p.color = Eigen::Vector3f(
+            std::clamp(r + m, 0.0, 1.0),
+            std::clamp(g + m, 0.0, 1.0),
+            std::clamp(b + m, 0.0, 1.0)
+        );
+    }
+}
+
 void PBF_System::InitSystem()
 {
     printf("#### PBF System ####\n");
@@ -77,13 +128,19 @@ void PBF_System::InitSystem()
     printf("TimeStep: %f\n", timeStep);
     printf("SubSteps: %d\n", numSubSteps);
 
-    // Generate and initialize particles
     particles.resize(numParticles);
     for (int i = 0; i < numParticles; ++i)
     {
         particles[i].i = i;
         particles[i].m = 3000.0 / static_cast<Scalar>(numParticles);
-        particles[i].x = Vec3(0.5, 1.5, 0.5).cwiseProduct(Vec3::Random()) + Vec3(-0.5, 2.5, 0.0);
+        /*
+        // Generar posiciones dentro de una esfera de radio centrada en (0, 4, 0)
+        Vec3 spherePos = Vec3::Random().normalized();
+        spherePos *= 0.75; // Escalar al radio deseado
+        particles[i].x = spherePos + Vec3(0.0, 4.0, 0.0);
+        */
+        // Generar posiciones en un paralelepipedo
+        particles[i].x = Vec3(0.5, 2.0, 0.5).cwiseProduct(Vec3::Random()) + Vec3(0.0, 4.0, 0.0);
         particles[i].v = Vec3::Zero();
     }
 
@@ -106,7 +163,10 @@ void PBF_System::InitSystem()
     for (auto& p : particles)
     {
         p.v = Vec3::Zero();
+        //p.v = Vec3(15.0, 0.0, 0.0);
     }
+
+    
 }
 
 
@@ -115,6 +175,8 @@ PBF_System::PBF_System() : neighborSearchEngine(radius, particles)
 {
     // Init Particles
     InitSystem();
+
+    SetParticlesColors();
 }
 
 PBF_System::~PBF_System() 
@@ -235,8 +297,8 @@ void PBF_System::Step(const Scalar dt)
             auto& p = particles[i];
 
             // Detect and resolve environmental collisions (in a very naive way)
-            p.p = p.p.cwiseMax(Vec3(-1.0, 0.0, -1.0));
-            p.p = p.p.cwiseMin(Vec3(+1.0, 8.0, +1.0));
+            p.p = p.p.cwiseMax(Vec3(-30.0, 0.0, -30.0));
+            p.p = p.p.cwiseMin(Vec3(+30.0, 8.0, +30.0));
         }
     }
     // Update positions and velocities

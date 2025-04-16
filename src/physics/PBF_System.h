@@ -16,11 +16,11 @@ private:
 
 	// Simulation params
 	const int numParticles = 10800;
-	//const int numParticles = 2700;
-	const int numSubSteps = 1;
-	const int numIter = 3;
+	//const int numParticles = 5400;
+	const int numSubSteps = 5;
+	const int numIter = 2;
 
-	const Scalar timeStep = 1.0 / 60.0;
+	const Scalar timeStep = 1.0 / 90.0;
 	const Scalar radius = 0.10;
 	const Scalar restDensity = 1000.0;
 	const Scalar epsilon = 1e+05;
@@ -32,6 +32,7 @@ private:
 	HashGrid neighborSearchEngine;
 	
 	void InitSystem();
+	void SetParticlesColors();
 	Scalar CalcDensity(const int target_index);
 	Scalar CalcConstraint(const int target_index);
 	Vec3 CalcGradConstraint(const int target_index, const int var_index);
