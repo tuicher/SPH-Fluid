@@ -1,0 +1,42 @@
+#version 460
+layout(local_size_x = 128) in;
+
+layout(std430, binding = 0) buffer Particles {
+    struct Particle {
+        vec4 x; vec4 v; vec4 p; vec4 color; vec4 meta;
+    };
+    Particle particles[];
+};
+
+layout(std430, binding = 1) buffer ParticleCellIndices {
+    uint particleCellIndices[];
+};
+
+layout(std430, binding = 2) buffer ParticleIndices {
+    uint particleIndices[];
+};
+
+uniform vec3 uGridOrigin;      // e.g., vec3(-gridSize/2.0)
+uniform ivec3 uGridResolution; // e.g., ivec3(64, 64, 64)
+uniform float uCellSize;
+
+uint flatten3DCoord(ivec3 coord, ivec3 gridSize)
+{
+    return uint(coord.x + coord.y * gridSize.x + coord.z * gridSize.x * gridSize.y);
+}
+
+void main()
+{
+    uint i = gl_GlobalInvocationID.x;
+    vec3 pos = particles[i].p.xyz;  // usar posición predicha
+
+    vec3 relative = (pos - uGridOrigin) / uCellSize;
+    ivec3 cellCoord = ivec3(floor(relative));
+
+    // Clamping dentro de la rejilla
+    cellCoord = clamp(cellCoord, ivec3(0), uGridResolution - 1);
+
+    uint cellIndex = flatten3DCoord(cellCoord, uGridResolution);
+    particleCellIndices[i] = cellIndex;
+    particleIndices[i] = i; // identidad, para luego ordenar
+}

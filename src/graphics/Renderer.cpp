@@ -27,6 +27,8 @@ void main()
 }
 )";
 
+#define NUM_PARTICLES 30000000
+
 struct Particule
 {
     EIGEN_ALIGN16 Eigen::Vector4f pos;
@@ -59,7 +61,7 @@ Renderer::Renderer(int width, int height, const char* title)
     m_Camera.SetAspectRatio((float)m_Width / (float)m_Height);
 
     /// COMPUTE SHADER SEGMENT
-    std::vector<Particule> particules(25000);
+    std::vector<Particule> particules(NUM_PARTICLES);
 
     for (int i = 0; i < particules.size(); i++)
     {
@@ -253,7 +255,7 @@ void Renderer::Run()
         GLint uTimeLoc = glGetUniformLocation(m_ComputeProgram, "uTime");
         glUniform1f(uTimeLoc, currentTime);
 
-        glDispatchCompute((25000 + 999) / 1000, 1, 1);
+        glDispatchCompute((NUM_PARTICLES + 999) / 1000, 1, 1);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
         // Verificar posiciones actualizadas en CPU (para diagnóstico inmediato)

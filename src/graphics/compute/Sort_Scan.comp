@@ -1,0 +1,42 @@
+#version 460
+layout(local_size_x = 128) in;
+
+layout(std430, binding = 1) buffer BitMask {
+    uint bits[]; // entrada: array de 0s y 1s
+};
+
+layout(std430, binding = 3) buffer Scan {
+    uint scan[]; // salida: prefix sum
+};
+
+shared uint temp[128]; // shared memory para el bloque
+
+void main()
+{
+    uint gid = gl_GlobalInvocationID.x;
+    uint lid = gl_LocalInvocationID.x;
+
+    // Cargar datos a memoria compartida
+    temp[lid] = bits[gid];
+    memoryBarrierShared();
+    barrier();
+
+    // EXCLUSIVE SCAN - Blelloch
+    for (uint offset = 1; offset < 128; offset *= 2)
+    {
+        uint t = 0;
+        if (lid >= offset)
+            t = temp[lid - offset];
+
+        barrier();
+        temp[lid] += t;
+        barrier();
+    }
+
+    // Convert to exclusive scan
+    uint inclusive = temp[lid];
+    temp[lid] = (lid == 0) ? 0 : temp[lid - 1];
+
+    barrier();
+    scan[gid] = temp[lid];
+}

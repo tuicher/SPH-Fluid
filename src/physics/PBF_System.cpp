@@ -82,16 +82,16 @@ void PBF_System::SetParticlesColors()
         if (y > maxY) maxY = y;
     }
 
-    // Evitar división por cero
+    // Evitar divisiï¿½n por cero
     if (maxY == minY) maxY += 1.0;
 
-    // Asignar colores en arcoíris según Y
+    // Asignar colores en arcoï¿½ris segï¿½n Y
     for (auto& p : particles)
     {
         // Normalizar Y entre 0 y 1 (invertido para arriba-abajo)
         Scalar t = (maxY - p.x.y()) / (maxY - minY);
 
-        // Convertir a HSV (Hue: 0°=rojo, 300°=magenta)
+        // Convertir a HSV (Hue: 0ï¿½=rojo, 300ï¿½=magenta)
         Scalar hue = t * 300.0;
         Scalar s = 1.0, v = 1.0;
         Scalar c = v * s;
