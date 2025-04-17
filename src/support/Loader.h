@@ -1,7 +1,10 @@
+#pragma once
+
 #include <string>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+
 
 /**
  * @brief Lee el contenido de un archivo de texto y lo devuelve como std::string.

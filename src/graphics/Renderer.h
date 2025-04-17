@@ -13,6 +13,7 @@
 
 #include "Camera.h"
 #include "Shader.h"
+#include "../support/Loader.h"
 #include "../support/AppInfo.h"
 #include "../support/ImGuiLayer.h"
 #include "../geometry/Cube.h"
@@ -80,9 +81,12 @@ private:
 
 
     // SPH_Implementation
-    SPH_System m_SPHSystem;
+    //SPH_System m_SPHSystem;
     
 
     // PBF_Implementation
     PBF_System m_PBFSystem;
+
+    GLuint m_ComputeProgram;
+    GLuint m_SSBO;
 };

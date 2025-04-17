@@ -27,13 +27,19 @@ void main()
 }
 )";
 
+struct Particule
+{
+    EIGEN_ALIGN16 Eigen::Vector4f pos;
+    EIGEN_ALIGN16 Eigen::Vector4f base;
+    EIGEN_ALIGN16 Eigen::Vector4f color;
+};
+
 Renderer::Renderer(int width, int height, const char* title)
     : m_Width(width)
     , m_Height(height)
     , m_FpsSamples(MAX_FPS_SAMPLES, 0.0f)
     , xRotLength(0.0f)
     , yRotLength(0.0f)
-    , m_SPHSystem()
     , m_PBFSystem()
 {
     if (!InitGLFW(width, height, title))
@@ -49,11 +55,39 @@ Renderer::Renderer(int width, int height, const char* title)
     InitOpenGL();
     InitScene();
 
-    // Inicializar el sistema de partículas
-    m_SPHSystem.InitSystem();
-
     // Ajustar la cámara a la ventana inicial
     m_Camera.SetAspectRatio((float)m_Width / (float)m_Height);
+
+    /// COMPUTE SHADER SEGMENT
+    std::vector<Particule> particules(25000);
+
+    for (int i = 0; i < particules.size(); i++)
+    {
+        float x = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX / 4)) - 2.0f;
+        float y = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX / 4)) - 2.0f;
+        float z = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX / 4)) - 2.0f;
+
+        Eigen::Vector4f base(x, y, z, 1.0f);
+
+        particules[i].base = base;
+        particules[i].pos = base;
+
+        // Color aleatorio
+        float r = static_cast<float>(rand()) / RAND_MAX;
+        float g = static_cast<float>(rand()) / RAND_MAX;
+        float b = static_cast<float>(rand()) / RAND_MAX;
+        particules[i].color = Eigen::Vector4f(r, g, b, 1.0f);
+        //std::cout << i <<": " << base << std::endl;
+    }
+
+    std::cout << "Sizeof(Particule): " << sizeof(Particule) << " bytes" << std::endl;
+
+
+    // Crear el SSBO y subir datos
+    glGenBuffers(1, &m_SSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_SSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, particules.size() * sizeof(Particule), particules.data(), GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_SSBO);
 }
 
 Renderer::~Renderer()
@@ -112,13 +146,57 @@ void Renderer::InitOpenGL()
 
 void Renderer::InitScene()
 {
-    // Compilar y linkear shader
-    bool success = m_Shader.CreateShaderProgramFromFiles(
+    // Compilar y linkar shaders de vertices y fragmentos
+    bool vertexFragment = m_Shader.CreateShaderProgramFromFiles(
+        "..\\src\\graphics\\shaders\\computeVert.vs",
+        "..\\src\\graphics\\shaders\\computeFrag.fs"
+    );
+    /*
+    bool vertexFragment = m_Shader.CreateShaderProgramFromFiles(
         "..\\src\\graphics\\shaders\\phong.vs",
         "..\\src\\graphics\\shaders\\phong.fs"
     );
+    */
+    std::string computeCodeStr = LoadFileAsString("..\\src\\graphics\\compute\\simple.comp");
+    const char* computeCode = computeCodeStr.c_str();
 
+    GLuint shader = glCreateShader(GL_COMPUTE_SHADER);
+    glShaderSource(shader, 1, &computeCode, nullptr);
+    glCompileShader(shader);
+
+    // Verificar errores
+    GLint success;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
     if (!success)
+    {
+        GLchar infoLog[1024];
+        glGetShaderInfoLog(shader, 1024, nullptr, infoLog);
+        std::cerr << "Compute Shader error:\n" << infoLog << std::endl;
+        return;
+    }
+
+    m_ComputeProgram = glCreateProgram(); // ← importante guardarlo así!
+    glAttachShader(m_ComputeProgram, shader);
+    glLinkProgram(m_ComputeProgram);
+
+    glGetProgramiv(m_ComputeProgram, GL_LINK_STATUS, &success);
+    if (!success)
+    {
+        GLchar infoLog[1024];
+        glGetProgramInfoLog(m_ComputeProgram, 1024, nullptr, infoLog);
+        std::cerr << "Shader linking error:\n" << infoLog << std::endl;
+        return;
+    }
+
+    glDeleteShader(shader);
+    /*
+    bool success = m_Shader.CreateShaderProgramFromFiles(
+        "..\\src\\graphics\\shaders\\compute_phong.vs",
+        "..\\src\\graphics\\shaders\\compute_phong.fs"
+    );
+
+    */
+    if (!vertexFragment)
     {
         std::cerr << "Error al crear el shader program desde ficheros\n";
         m_Shader.CreateShaderProgram( vertexShaderInCode, fragmentShaderInCode);
@@ -145,173 +223,64 @@ void Renderer::Cleanup()
 }
 
 void Renderer::Run()
-{   
+{
     while (!glfwWindowShouldClose(m_Window))
     {
-        // 1) Procesar eventos de la ventana
         glfwPollEvents();
-
-        // 2) Comenzar un nuevo frame de ImGui
         m_ImGuiLayer.BeginFrame();
 
-        if (enableSimulation)
-            m_PBFSystem.AnimationStep();
-
-        // 3) Actualizar FPS en m_AppInfo
         float fps = 1.0f / ImGui::GetIO().DeltaTime;
         m_AppInfo.fpsSamples[m_AppInfo.sampleIdx] = fps;
         m_AppInfo.sampleIdx = (m_AppInfo.sampleIdx + 1) % m_AppInfo.fpsSamples.size();
-
-        // 4) Mostrar el panel con los FPS y el FOV
         m_ImGuiLayer.ShowInfoPanel(m_AppInfo);
-
-        // Opcional: si tu cámara requiere el FOV, puedes setearlo aquí
         m_Camera.SetFOV(m_AppInfo.fov);
 
-        m_SPHSystem.Animation();
-
-        // 5) Renderizado de la escena
         glClearColor(0.278f, 0.278f, 0.278f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Camera movement
-        if (buttonState == 1)
-        {
+        if (buttonState == 1) {
             float newXRot = m_Camera.GetRotation().x() + ((xRotLength - m_Camera.GetRotation().x()) * 0.1f);
             float newYRot = m_Camera.GetRotation().y() + ((yRotLength - m_Camera.GetRotation().y()) * 0.1f);
-
             m_Camera.SetRotation(Eigen::Vector2f(newXRot, newYRot));
         }
 
-        // Usar tu shader
+        // MUY IMPORTANTE: Bindea el SSBO antes de usarlo
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_SSBO);
+
+        // Lanzar compute shader correctamente
+        glUseProgram(m_ComputeProgram);
+        float currentTime = glfwGetTime();
+        GLint uTimeLoc = glGetUniformLocation(m_ComputeProgram, "uTime");
+        glUniform1f(uTimeLoc, currentTime);
+
+        glDispatchCompute((25000 + 999) / 1000, 1, 1);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        // Verificar posiciones actualizadas en CPU (para diagnóstico inmediato)
+        /*
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_SSBO);
+        Particule* ptr = (Particule*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
+        if (ptr) {
+            std::cout << "Pos Y primera partícula: " << ptr[0].pos.y() << "\n";
+            glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+        }
+        else {
+            std::cerr << "Error mapeando SSBO\n";
+        }
+        */
+        // Dibujo correcto, moderno, y único
         m_Shader.Use();
+        Eigen::Matrix4f viewProj = m_Camera.GetProjectionMatrix() * m_Camera.GetViewMatrix();
+        m_Shader.SetMatrix4("uViewProj", viewProj);
 
-        Eigen::Matrix4f view = m_Camera.GetViewMatrix();
-        Eigen::Matrix4f projection = m_Camera.GetProjectionMatrix();
-        m_Shader.SetMatrix4("uProjection", projection);
+        glBindVertexArray(m_Sphere->GetVAO());
+        glDrawElementsInstanced(GL_TRIANGLES, m_Sphere->GetNumIndex(), GL_UNSIGNED_INT, 0, 25000);
 
-        // Posición de la luz
-        float time = static_cast<float>(glfwGetTime());
-        m_Shader.SetVector3f("uLightPos", Eigen::Vector3f(10.0f, 10.0f, 10.0f));
-        m_Shader.SetVector3f("uLightColor", Eigen::Vector3f(1.0f, 1.0f, 1.0f));
-        // PBF LOOP
-        const auto& particles = m_PBFSystem.getParticles();
-
-        for (uint i = 0; i < m_PBFSystem.getNumParticles(); ++i)
-        {
-            Eigen::Matrix4f model = Eigen::Matrix4f::Identity();
-
-            Vec3 pos = particles[i].x; // ó getParticlePosition(i)
-            Eigen::Vector3f position = pos.cast<float>();
-
-            model *= Eigen::Affine3f(Eigen::Translation3f(position)).matrix();
-
-            Eigen::Matrix3f normalMat = model.topLeftCorner<3, 3>().inverse().transpose();
-            // Subir matrices al shader
-            m_Shader.SetMatrix4("uModelView", view * model);
-            m_Shader.SetMatrix3("uNormalMat", normalMat);
-
-            m_Shader.SetVector3f("uObjectColor", particles[i].color);
-            m_Sphere->Draw();
-        }
-
-        /*
-        // SPH LOOP
-        // Dibujar todas las esferas en sus posiciones
-        for (uint i = 0; i < m_SPHSystem.numParticles; ++i)
-        {
-            Eigen::Matrix4f model = Eigen::Matrix4f::Identity();
-
-            auto position = m_SPHSystem.mem[i].pos;
-
-            // Aplicar traslación a la posición de la esfera
-            model *= Eigen::Affine3f(Eigen::Translation3f(position)).matrix();
-            //model *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
-
-            Eigen::Matrix3f normalMat = model.topLeftCorner<3, 3>().inverse().transpose();
-
-            // Subir matrices al shader
-            m_Shader.SetMatrix4("uModelView", view * model);
-            m_Shader.SetMatrix3("uNormalMat", normalMat);
-
-            float p = m_SPHSystem.mem[i].pres;
-
-            // Definir valores de presión mínima y máxima
-            float minPressure = 0.0f;
-            float maxPressure = 40.0f;
-
-            // Normalizar la presión entre 0 y 1
-            float normalizedP = (p - minPressure) / (maxPressure - minPressure);
-            normalizedP = std::clamp(normalizedP, 0.0f, 1.0f);
-
-            // Interpolación lineal entre verde y rojo
-            Eigen::Vector3f color = (1.0f - normalizedP) * Eigen::Vector3f(1.0f, 1.0f, 1.0f) + normalizedP * Eigen::Vector3f(0.0f, 0.0f, 1.0f);
-
-            // Aplicar el color en el shader
-            //m_Shader.SetVector3f("uObjectColor", color);
-
-            m_Shader.SetVector3f("uObjectColor", m_SPHSystem.mem[i].color);
-
-            // Dibujar la esfera
-            m_Sphere->Draw();
-        }
-        */
-
-        /*
-        
-        int dx = 10;
-        int dy = 10;
-        int dz = 10;
-
-        for (int i = -dx; i < dx; i++)
-        {
-            for (int j = -dx; j < dy; j++)
-            {
-                for (int k = -dx; k < dy; k++)
-                {
-                    Eigen::Matrix4f modelSphere = Eigen::Matrix4f::Identity();
-
-                    //modelSphere *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
-                    modelSphere *= Eigen::Affine3f(Eigen::Translation3f(0.2f * i, 0.2f * j, 0.2f * k)).matrix();
-
-                    Eigen::Matrix4f mvpSphere = projection * view * modelSphere;
-                    Eigen::Matrix3f normalSphere = modelSphere.topLeftCorner<3, 3>().inverse().transpose();
-
-                    m_Shader.SetMatrix4("uModel", modelSphere);
-                    m_Shader.SetMatrix4("uMVP", mvpSphere);
-                    m_Shader.SetMatrix3("uNormalMat", normalSphere);
-
-                    m_Shader.SetVector3f("uObjectColor", Eigen::Vector3f((1.0f / dx) * i, (1.0f / dy) * j, (1.0f / dz) * k));
-
-                    m_Sphere->Draw();
-                }
-            }
-        }
-        
-        // Dibujar la esfera, movida en X para no superponerse
-        Eigen::Matrix4f modelSphere = Eigen::Matrix4f::Identity();
-
-        //modelSphere *= Eigen::Affine3f(Eigen::AngleAxisf(time, Eigen::Vector3f::UnitY())).matrix();
-        modelSphere *= Eigen::Affine3f(Eigen::Translation3f(0.0f, 0.0f, 0.0f)).matrix();
-        modelSphere *= Eigen::Affine3f(Eigen::UniformScaling(15.0f)).matrix();
-
-        Eigen::Matrix4f mvpSphere = projection * view * modelSphere;
-        Eigen::Matrix3f normalSphere = modelSphere.topLeftCorner<3, 3>().inverse().transpose();
-
-        m_Shader.SetMatrix4("uModel", modelSphere);
-        m_Shader.SetMatrix4("uMVP", mvpSphere);
-        m_Shader.SetMatrix3("uNormalMat", normalSphere);
-        m_Shader.SetVector3f("uObjectColor", m_Cube->GetColor());
-
-        m_Cube->Draw();
-        */
-        // 6) Finalizar frame de ImGui
         m_ImGuiLayer.EndFrame();
-
-        // 7) Intercambiar buffers
         glfwSwapBuffers(m_Window);
     }
 }
+
 
 void Renderer::FramebufferSizeCallback(GLFWwindow* window, int width, int height)
 {
@@ -365,7 +334,7 @@ void Renderer::HandleKeyCallback(GLFWwindow* window, int key, int scancode, int 
             // Ejemplo: invertir sistema en marcha/parada
             //m_SPHSystem.sys_running = 1 - m_SPHSystem.sys_running;
             enableSimulation = !enableSimulation;
-            std::cout << "Presionaste SPACE (ejemplo): " << m_SPHSystem.sys_running << std::endl;
+            //std::cout << "Presionaste SPACE (ejemplo): " << m_SPHSystem.sys_running << std::endl;
         }
     }
 }
