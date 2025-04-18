@@ -392,3 +392,123 @@ void Renderer::HandleCursorPosCallback(GLFWwindow* window, double xpos, double y
     ox = xpos;
     oy = ypos;
 }
+
+void Renderer::TestComputeShader(const std::string& velocityShaderPath, const std::string& cellIndexShaderPath)
+{
+    std::cout << "== TestComputeShader ==\n";
+
+    const int testCount = 10;
+    std::vector<PBF_GPU_Particle> testParticles(testCount);
+
+    for (int i = 0; i < testCount; ++i)
+    {
+        float x = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX / 4)) - 2.0f;
+        float y = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX / 4)) - 2.0f;
+        float z = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX / 4)) - 2.0f;
+        Eigen::Vector4f rndPosition(x, y, z, 1.0f);
+
+        testParticles[i].x = rndPosition;
+        testParticles[i].v = Eigen::Vector4f(1, 2, 3, 0);
+    }
+
+    // 2. Crear buffers
+    GLuint ssboParticles;
+    glGenBuffers(1, &ssboParticles);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboParticles);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(PBF_GPU_Particle) * testCount, testParticles.data(), GL_DYNAMIC_COPY);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
+
+    // === PRIMER KERNEL ===
+    GLuint velocityProgram = CompileComputeShader(velocityShaderPath); // helper que compila shader
+    glUseProgram(velocityProgram);
+    glUniform1f(glGetUniformLocation(velocityProgram, "uDeltaTime"), 0.1f);
+    glUniform3f(glGetUniformLocation(velocityProgram, "uGravity"), 0.0f, -9.8f, 0.0f);
+    glDispatchCompute((testCount + 127) / 128, 1, 1);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    // === SEGUNDO KERNEL ===
+    // Crear buffers extra
+    GLuint ssboCellIndices, ssboIndices;
+    glGenBuffers(1, &ssboCellIndices);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboCellIndices);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLuint) * testCount, nullptr, GL_DYNAMIC_COPY);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellIndices);
+
+    glGenBuffers(1, &ssboIndices);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboIndices);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLuint) * testCount, nullptr, GL_DYNAMIC_COPY);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboIndices);
+
+    GLuint cellIndexProgram = CompileComputeShader(cellIndexShaderPath);
+    glUseProgram(cellIndexProgram);
+    glUniform3f(glGetUniformLocation(cellIndexProgram, "uGridOrigin"), -1.0f, -1.0f, -1.0f);
+    glUniform3i(glGetUniformLocation(cellIndexProgram, "uGridResolution"), 4, 4, 4);
+    glUniform1f(glGetUniformLocation(cellIndexProgram, "uCellSize"), 0.5f);
+    glDispatchCompute((testCount + 127) / 128, 1, 1);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    // === LEER RESULTADOS ===
+    PBF_GPU_Particle* outParticles = (PBF_GPU_Particle*)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, sizeof(PBF_GPU_Particle) * testCount, GL_MAP_READ_BIT);
+    if (outParticles) {
+        for (int i = 0; i < testCount; ++i) {
+            std::cout << "Particle " << i << " pred pos: " << outParticles[i].p.transpose() << "\n";
+        }
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+    }
+
+    // Leer cell indices
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboCellIndices);
+    GLuint* cellIdx = (GLuint*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
+    if (cellIdx) {
+        std::cout << "-- Cell Indices --\n";
+        for (int i = 0; i < testCount; ++i) {
+            std::cout << "Particle " << i << " in cell: " << cellIdx[i] << "\n";
+        }
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+    }
+
+    // Leer particle indices
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboIndices);
+    GLuint* partIdx = (GLuint*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
+    if (partIdx) {
+        std::cout << "-- Particle Indices --\n";
+        for (int i = 0; i < testCount; ++i) {
+            std::cout << "Index " << i << " = " << partIdx[i] << "\n";
+        }
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+    }
+
+    std::cout << "== Fin del test ==\n";
+
+    // Cleanup
+    glDeleteProgram(velocityProgram);
+    glDeleteProgram(cellIndexProgram);
+    glDeleteBuffers(1, &ssboParticles);
+    glDeleteBuffers(1, &ssboCellIndices);
+    glDeleteBuffers(1, &ssboIndices);
+}
+
+GLuint Renderer::CompileComputeShader(const std::string& path)
+{
+    std::string code = LoadFileAsString(path);
+    const char* src = code.c_str();
+
+    GLuint shader = glCreateShader(GL_COMPUTE_SHADER);
+    glShaderSource(shader, 1, &src, nullptr);
+    glCompileShader(shader);
+
+    GLint success;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        char log[1024];
+        glGetShaderInfoLog(shader, 1024, nullptr, log);
+        std::cerr << "Shader compilation failed:\n" << log << std::endl;
+    }
+
+    GLuint program = glCreateProgram();
+    glAttachShader(program, shader);
+    glLinkProgram(program);
+    glDeleteShader(shader);
+    return program;
+}
+

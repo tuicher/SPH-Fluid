@@ -7,7 +7,11 @@ int main()
     //PBF_System system = PBF_System();
 
     Renderer app(1280, 720, "PBF-Fluid");
-    app.Run();
+    
+    app.TestComputeShader(  "..\\src\\graphics\\compute\\IntegrateAndPredict.comp",
+                            "..\\src\\graphics\\compute\\AssingCells.comp");
+    
+    //app.Run();
 
     return 0;
 }

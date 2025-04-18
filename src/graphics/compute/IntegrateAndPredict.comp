@@ -2,14 +2,15 @@
 
 layout(local_size_x = 128) in;
 
+struct Particle {
+    vec4 x;      // current position
+    vec4 v;      // velocity
+    vec4 p;      // predicted position
+    vec4 color;
+    vec4 meta;   // mass, index, etc.
+};
+
 layout(std430, binding = 0) buffer Particles {
-    struct Particle {
-        vec4 x;      // current position
-        vec4 v;      // velocity
-        vec4 p;      // predicted position
-        vec4 color;
-        vec4 meta;   // mass, index, etc.
-    };
     Particle particles[];
 };
 

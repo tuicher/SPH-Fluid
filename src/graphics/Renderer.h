@@ -20,6 +20,7 @@
 #include "../geometry/Sphere.h"
 #include "../physics/SPH_System.h"
 #include "../physics/PBF_System.h"
+#include "../physics/PBF_GPU_System.h"
 
 // DEFINES
 #define D_TRANSLATION 0.2f
@@ -31,6 +32,8 @@ public:
     ~Renderer();
 
     void Run();
+
+    void TestComputeShader(const std::string& velocityShaderPath, const std::string& cellIndexShaderPath);
 
 private:
     bool InitGLFW(int width, int height, const char* title);
@@ -47,6 +50,8 @@ private:
 
     static void CursorPosCallback(GLFWwindow* window, double xpos, double ypos);
     void HandleCursorPosCallback(GLFWwindow* window, double xpos, double ypos);
+
+    GLuint CompileComputeShader(const std::string& path);
 
     GLFWwindow* m_Window = nullptr;
     int m_Width;
