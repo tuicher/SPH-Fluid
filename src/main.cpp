@@ -8,8 +8,7 @@ int main()
 
     Renderer app(1280, 720, "PBF-Fluid");
     
-    app.TestComputeShader(  "..\\src\\graphics\\compute\\IntegrateAndPredict.comp",
-                            "..\\src\\graphics\\compute\\AssingCells.comp");
+    app.TestComputeShader();
     
     //app.Run();
 

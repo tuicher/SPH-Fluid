@@ -1,43 +1,41 @@
-// Scan.comp
 #version 460
 layout(local_size_x = 128) in;
 
+// Añadir uniforme para el número de elementos
+uniform uint uNumElements;
+
 layout(std430, binding = 1) buffer BitMask {
-    uint bits[]; // entrada: array de 0s y 1s
+    uint bits[];
 };
 
 layout(std430, binding = 3) buffer Scan {
-    uint scan[]; // salida: prefix sum
+    uint scan[];
 };
 
-shared uint temp[128]; // shared memory para el bloque
+shared uint temp[128];
 
 void main()
 {
     uint gid = gl_GlobalInvocationID.x;
     uint lid = gl_LocalInvocationID.x;
 
-    // Cargar datos a memoria compartida
-    temp[lid] = bits[gid];
+    // Inicializar temp con 0 si está fuera de los límites
+    temp[lid] = (gid < uNumElements) ? bits[gid] : 0;
     memoryBarrierShared();
     barrier();
 
-    // EXCLUSIVE SCAN - Blelloch
-    for (uint offset = 1; offset < 128; offset *= 2)
-    {
-        uint t = 0;
-        if (lid >= offset)
-            t = temp[lid - offset];
-
+    // Blelloch scan
+    for (uint offset = 1; offset < 128; offset *= 2) {
+        uint t = (lid >= offset) ? temp[lid - offset] : 0;
         barrier();
         temp[lid] += t;
         barrier();
     }
 
-    // Convert to exclusive scan
-    uint inclusive = temp[lid];
-    temp[lid] = (lid == 0) ? 0 : temp[lid - 1];
-
+    // Convertir a exclusive scan
+    uint exclusive = (lid == 0) ? 0 : temp[lid - 1];
     barrier();
-    scan[gid] = temp[lid];
+    if (gid < uNumElements) {
+        scan[gid] = exclusive;
+    }
 }

@@ -33,7 +33,7 @@ public:
 
     void Run();
 
-    void TestComputeShader(const std::string& velocityShaderPath, const std::string& cellIndexShaderPath);
+    void TestComputeShader();
 
 private:
     bool InitGLFW(int width, int height, const char* title);
