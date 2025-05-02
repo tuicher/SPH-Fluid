@@ -11,28 +11,31 @@ shared uint sData[gl_WorkGroupSize.x];
 
 void main()
 {
-    uint gid = gl_GlobalInvocationID.x;
-    uint lid = gl_LocalInvocationID.x;
+    uint gid   = gl_GlobalInvocationID.x;
+    uint lid   = gl_LocalInvocationID.x;
     uint group = gl_WorkGroupID.x;
 
-    if (gid >= uNumElements) return;
+    bool isValid = gid < uNumElements;          // ← NUEVO nombre
+    uint v = isValid ? bits[gid] : 0u;
 
-    /* --- upsweep (idéntico al que ya tenías) --- */
-    sData[lid] = bits[gid];
+    /* cargar al shared */
+    sData[lid] = v;
     memoryBarrierShared(); barrier();
 
-    for(uint off = 1u; off < gl_WorkGroupSize.x; off <<= 1u){
-        uint v = (lid >= off) ? sData[lid - off] : 0u;
+    /* upsweep inclusivo */
+    for (uint off = 1u; off < gl_WorkGroupSize.x; off <<= 1u) {
+        uint tmp = (lid >= off) ? sData[lid - off] : 0u;
         barrier();
-        sData[lid] += v;
+        sData[lid] += tmp;
         barrier();
     }
 
-    /* convertir a exclusivo y escribir */
+    /* exclusivo + escritura */
     uint excl = (lid == 0u) ? 0u : sData[lid - 1u];
-    scan[gid] = excl;
+    if (isValid)
+        scan[gid] = excl;
 
-    /* hilo 127 escribe la suma del grupo */
-    if(lid == gl_WorkGroupSize.x - 1u)
+    barrier();                       // todos llegan
+    if (lid == gl_WorkGroupSize.x - 1u)
         sums[group] = sData[lid];
 }

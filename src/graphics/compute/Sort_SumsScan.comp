@@ -13,18 +13,20 @@ void main()
     uint gid = gl_GlobalInvocationID.x;
     uint lid = gl_LocalInvocationID.x;
 
-    if (gid >= uNumGroups) return;
+    bool isValid = gid < uNumGroups;           // ← NUEVO nombre
+    uint v = isValid ? sums[gid] : 0u;
 
-    sData[lid] = sums[gid];
+    sData[lid] = v;
     memoryBarrierShared(); barrier();
 
-    for(uint off = 1u; off < gl_WorkGroupSize.x; off <<= 1u){
-        uint v = (lid >= off) ? sData[lid - off] : 0u;
+    for (uint off = 1u; off < gl_WorkGroupSize.x; off <<= 1u) {
+        uint tmp = (lid >= off) ? sData[lid - off] : 0u;
         barrier();
-        sData[lid] += v;
+        sData[lid] += tmp;
         barrier();
     }
 
     uint excl = (lid == 0u) ? 0u : sData[lid - 1u];
-    offsets[gid] = excl;
+    if (isValid)
+        offsets[gid] = excl;
 }

@@ -400,23 +400,22 @@ void Renderer::HandleCursorPosCallback(GLFWwindow* window, double xpos, double y
 //      2) Asignar partículas a celdas
 //      3) Radix‑sort de 32 bits totalmente en GPU
 // -----------------------------------------------------------------------------
+// Renderer.cpp  —  incluye <numeric> y <vector>
 void Renderer::TestComputeShader()
 {
-    constexpr GLuint kNum = 10800;   // ahora probamos con 10 000
-    constexpr GLuint kWG = 128;      // local_size_x en TODOS los kernels
+    constexpr GLuint kWG = 128;        // local_size_x en los .comp
+    constexpr GLuint kNum = 500000;     // cámbialo a lo que quieras
     const     GLuint numGroups = (kNum + kWG - 1) / kWG;
 
-    std::cout << "== TestComputeShader ==\n";
+    std::cout << "== TestComputeShader ==  N=" << kNum
+        << "  (groups " << numGroups << ")\n";
 
-    /* ────────────────────────────────────────────────────────────────
-       1.  Partículas y kernel Integrate & Predict
-    ────────────────────────────────────────────────────────────────── */
+    /*───────────────────────────────────────────────────────────────────
+      1.  Datos de entrada & Integrate
+    ───────────────────────────────────────────────────────────────────*/
     std::vector<PBF_GPU_Particle> particles(kNum);
-    for (auto& p : particles)
-    {
-        Eigen::Vector4f pos = Eigen::Vector4f::Random();   // [-1,1]^3
-        pos.w() = 1.f;
-        p.x = pos;
+    for (auto& p : particles) {
+        p.x = Eigen::Vector4f::Random(); p.x.w() = 1.f;
         p.v = Eigen::Vector4f::Zero();
     }
 
@@ -430,23 +429,20 @@ void Renderer::TestComputeShader()
         "..\\src\\graphics\\compute\\IntegrateAndPredict.comp");
     glUseProgram(progIntegrate);
     glUniform1f(glGetUniformLocation(progIntegrate, "uDeltaTime"), 0.016f);
-    glUniform3f(glGetUniformLocation(progIntegrate, "uGravity"),
-        0.0f, -9.81f, 0.0f);
+    glUniform3f(glGetUniformLocation(progIntegrate, "uGravity"), 0, -9.81f, 0);
     glDispatchCompute(numGroups, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-    /* ────────────────────────────────────────────────────────────────
-       2.  Asignar celdas
-    ────────────────────────────────────────────────────────────────── */
+    /*───────────────────────────────────────────────────────────────────
+      2.  Asignar celdas
+    ───────────────────────────────────────────────────────────────────*/
     GLuint ssboCellIdx, ssboParticleIdx;
     glCreateBuffers(1, &ssboCellIdx);
-    glNamedBufferData(ssboCellIdx, sizeof(GLuint) * kNum, nullptr,
-        GL_DYNAMIC_DRAW);
+    glNamedBufferData(ssboCellIdx, sizeof(GLuint) * kNum, nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellIdx);
 
+    std::vector<GLuint> idxCPU(kNum); std::iota(idxCPU.begin(), idxCPU.end(), 0);
     glCreateBuffers(1, &ssboParticleIdx);
-    std::vector<GLuint> idxCPU(kNum);
-    std::iota(idxCPU.begin(), idxCPU.end(), 0);
     glNamedBufferData(ssboParticleIdx, sizeof(GLuint) * kNum,
         idxCPU.data(), GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIdx);
@@ -454,59 +450,51 @@ void Renderer::TestComputeShader()
     GLuint progAssign = CompileComputeShader(
         "..\\src\\graphics\\compute\\AssingCells.comp");
     glUseProgram(progAssign);
-    glUniform3f(glGetUniformLocation(progAssign, "uGridOrigin"),
-        0.f, 1.f, 0.f);
-    glUniform3i(glGetUniformLocation(progAssign, "uGridResolution"),
-        4, 4, 4);
+    glUniform3f(glGetUniformLocation(progAssign, "uGridOrigin"), 0, 1, 0);
+    glUniform3i(glGetUniformLocation(progAssign, "uGridResolution"), 4, 4, 4);
     glUniform1f(glGetUniformLocation(progAssign, "uCellSize"), 0.1f);
     glDispatchCompute(numGroups, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-    /* ────────────────────────────────────────────────────────────────
-       3.  Buffers auxiliares
-    ────────────────────────────────────────────────────────────────── */
+    /*───────────────────────────────────────────────────────────────────
+      3.  Buffers auxiliares
+    ───────────────────────────────────────────────────────────────────*/
     GLuint ssboBits, ssboScan, ssboKeysTmp, ssboValsTmp,
         ssboCounter, ssboSums, ssboOffsets;
-    // size helpers
-    auto make = [](GLuint& id, size_t sz)
-        {
-            glCreateBuffers(1, &id);
-            glNamedBufferData(id, sz, nullptr, GL_DYNAMIC_DRAW);
+    auto make = [](GLuint& id, size_t sz) {
+        glCreateBuffers(1, &id); glNamedBufferData(id, sz, nullptr, GL_DYNAMIC_DRAW);
         };
-
     make(ssboBits, sizeof(GLuint) * kNum);
     make(ssboScan, sizeof(GLuint) * kNum);
     make(ssboKeysTmp, sizeof(GLuint) * kNum);
     make(ssboValsTmp, sizeof(GLuint) * kNum);
-    make(ssboCounter, sizeof(GLuint));   GLuint zero = 0;
-    glNamedBufferSubData(ssboCounter, 0, 4, &zero);
-
+    make(ssboCounter, sizeof(GLuint));
     make(ssboSums, sizeof(GLuint) * numGroups);
     make(ssboOffsets, sizeof(GLuint) * numGroups);
 
-    /* ────────────────────────────────────────────────────────────────
-       4.  Compilar TODOS los shaders una sola vez
-    ────────────────────────────────────────────────────────────────── */
-    auto C = [&](const char* f) { return CompileComputeShader(f); };
+    GLuint zero = 0; glNamedBufferSubData(ssboCounter, 0, 4, &zero);
 
+    /*───────────────────────────────────────────────────────────────────
+      4.  Shaders
+    ───────────────────────────────────────────────────────────────────*/
+    auto C = [&](const char* f) { return CompileComputeShader(f); };
     GLuint progExtract = C("..\\src\\graphics\\compute\\Sort_ExtractBit.comp");
     GLuint progBlock = C("..\\src\\graphics\\compute\\Sort_BlockScan.comp");
-    GLuint progSums = C("..\\src\\graphics\\compute\\Sort_SumsScan.comp");
     GLuint progAddOff = C("..\\src\\graphics\\compute\\Sort_AddOffset.comp");
     GLuint progCount = C("..\\src\\graphics\\compute\\Sort_CountOnes.comp");
     GLuint progReorder = C("..\\src\\graphics\\compute\\Sort_Reorder.comp");
 
-    /* ────────────────────────────────────────────────────────────────
-       5.  Radix‑sort 32 bits
-    ────────────────────────────────────────────────────────────────── */
-    GLuint keysIn = ssboCellIdx;
-    GLuint valsIn = ssboParticleIdx;
-    GLuint keysOut = ssboKeysTmp;
-    GLuint valsOut = ssboValsTmp;
+    /*───────────────────────────────────────────────────────────────────
+      5.  Radix‑sort 32 bits
+    ───────────────────────────────────────────────────────────────────*/
+    GLuint keysIn = ssboCellIdx, valsIn = ssboParticleIdx,
+        keysOut = ssboKeysTmp, valsOut = ssboValsTmp;
+
+    std::vector<GLuint> sumsCPU(numGroups), offsetsCPU(numGroups);
 
     for (GLuint bit = 0; bit < 32; ++bit)
     {
-        /* a) Extract bit (0/1) --------------------------------------- */
+        /* a) Extract bit (0/1) */
         glUseProgram(progExtract);
         glUniform1ui(glGetUniformLocation(progExtract, "uBit"), bit);
         glUniform1ui(glGetUniformLocation(progExtract, "uNumElements"), kNum);
@@ -515,7 +503,7 @@ void Renderer::TestComputeShader()
         glDispatchCompute(numGroups, 1, 1);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-        /* b‑1) Block‑level scan  ------------------------------------- */
+        /* b‑1) Block scan → scan[] & sums[] */
         glUseProgram(progBlock);
         glUniform1ui(glGetUniformLocation(progBlock, "uNumElements"), kNum);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboBits);
@@ -524,29 +512,27 @@ void Renderer::TestComputeShader()
         glDispatchCompute(numGroups, 1, 1);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-        if (numGroups > 1)
-        {
-            /* b‑2) Scan de sums[]  ---------------------------------- */
-            GLuint gLv2 = (numGroups + kWG - 1) / kWG;
-            glUseProgram(progSums);
-            glUniform1ui(glGetUniformLocation(progSums, "uNumGroups"),
-                numGroups);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssboSums);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssboOffsets);
-            glDispatchCompute(gLv2, 1, 1);
-            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        /* b‑2)  prefijo exclusivo de sums[]  (CPU, coste ínfimo) */
+        glGetNamedBufferSubData(ssboSums, 0,
+            sizeof(GLuint) * numGroups, sumsCPU.data());
 
-            /* b‑3) Añadir offset a cada bloque ----------------------- */
-            glUseProgram(progAddOff);
-            glUniform1ui(glGetUniformLocation(progAddOff, "uNumElements"),
-                kNum);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssboScan);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssboOffsets);
-            glDispatchCompute(numGroups, 1, 1);
-            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        GLuint running = 0;
+        for (GLuint g = 0; g < numGroups; ++g) {
+            offsetsCPU[g] = running;
+            running += sumsCPU[g];
         }
+        glNamedBufferSubData(ssboOffsets, 0,
+            sizeof(GLuint) * numGroups, offsetsCPU.data());
 
-        /* c) Contar unos -------------------------------------------- */
+        /* b‑3)  AddOffset (GPU) */
+        glUseProgram(progAddOff);
+        glUniform1ui(glGetUniformLocation(progAddOff, "uNumElements"), kNum);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssboScan);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssboOffsets);
+        glDispatchCompute(numGroups, 1, 1);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        /* c) Count ones */
         glNamedBufferSubData(ssboCounter, 0, 4, &zero);
         glUseProgram(progCount);
         glUniform1ui(glGetUniformLocation(progCount, "uNumElements"), kNum);
@@ -554,16 +540,13 @@ void Renderer::TestComputeShader()
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, ssboCounter);
         glDispatchCompute(numGroups, 1, 1);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
-        GLuint ones;
-        glGetNamedBufferSubData(ssboCounter, 0, 4, &ones);
+        GLuint ones; glGetNamedBufferSubData(ssboCounter, 0, 4, &ones);
         GLuint falses = kNum - ones;
 
-        /* d) Reorder ------------------------------------------------- */
+        /* d) Reorder */
         glUseProgram(progReorder);
         glUniform1ui(glGetUniformLocation(progReorder, "uNumElements"), kNum);
-        glUniform1ui(glGetUniformLocation(progReorder, "uTotalFalses"),
-            falses);
+        glUniform1ui(glGetUniformLocation(progReorder, "uTotalFalses"), falses);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, keysIn);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, valsIn);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboBits);
@@ -573,40 +556,40 @@ void Renderer::TestComputeShader()
         glDispatchCompute(numGroups, 1, 1);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-        /* e) Ping‑pong ---------------------------------------------- */
-        std::swap(keysIn, keysOut);
-        std::swap(valsIn, valsOut);
+        std::swap(keysIn, keysOut); std::swap(valsIn, valsOut);
     }
 
-    /* ────────────────────────────────────────────────────────────────
-       6.  Resultado
-    ────────────────────────────────────────────────────────────────── */
+    /*───────────────────────────────────────────────────────────────────
+      6.  Resultado & comprobación
+    ───────────────────────────────────────────────────────────────────*/
     std::vector<GLuint> cell(kNum), idxSorted(kNum);
-    glGetNamedBufferSubData(keysIn, 0, sizeof(GLuint) * kNum, cell.data());
-    glGetNamedBufferSubData(valsIn, 0, sizeof(GLuint) * kNum, idxSorted.data());
-
-    std::cout << "== Final Sorted Result ==\n";
-    for (GLuint i = 0; i < kNum; ++i)
-        std::cout << "Index " << i << " -> Cell: "
-        << cell[i] << ", Particle Index: "
-        << idxSorted[i] << '\n';
+    glGetNamedBufferSubData(keysIn, 0, sizeof(GLuint)* kNum, cell.data());
+    glGetNamedBufferSubData(valsIn, 0, sizeof(GLuint)* kNum, idxSorted.data());
 
     bool ok = std::is_sorted(cell.begin(), cell.end());
     std::cout << "Ordenación correcta? " << std::boolalpha << ok << '\n';
 
-    /* ────────────────────────────────────────────────────────────────
-       7.  Limpieza
-    ────────────────────────────────────────────────────────────────── */
-    auto delP = [](GLuint& p) { glDeleteProgram(p); p = 0; };
-    delP(progIntegrate); delP(progAssign);  delP(progExtract);
-    delP(progBlock);     delP(progSums);    delP(progAddOff);
-    delP(progCount);     delP(progReorder);
+    /*  >>> BUCLE DE DEPURACIÓN (imprime todo el array) <<<  */
+    /*
+    std::cout << "== Final Sorted Result ==\n";
+    for (GLuint i = 0; i < kNum; ++i)
+        std::cout << "Index " << i
+        << " -> Cell: " << cell[i]
+        << ", Particle Index: " << idxSorted[i] << '\n';
+    */
+    /*───────────────────────────────────────────────────────────────────
+      7.  Limpieza
+    ───────────────────────────────────────────────────────────────────*/
+    GLuint progs[]{ progIntegrate,progAssign,progExtract,progBlock,
+                   progAddOff,progCount,progReorder };
+    for (auto p : progs) glDeleteProgram(p);
 
-    GLuint buffers[] = { ssboParticles, ssboCellIdx, ssboParticleIdx,
-                         ssboBits, ssboScan, ssboKeysTmp, ssboValsTmp,
-                         ssboCounter, ssboSums, ssboOffsets };
-    glDeleteBuffers(std::size(buffers), buffers);
+    GLuint bufs[]{ ssboParticles,ssboCellIdx,ssboParticleIdx, ssboBits,
+                   ssboScan,ssboKeysTmp,ssboValsTmp, ssboCounter,
+                   ssboSums,ssboOffsets };
+    glDeleteBuffers(std::size(bufs), bufs);
 }
+
 
 
 GLuint Renderer::CompileComputeShader(const std::string& path)
