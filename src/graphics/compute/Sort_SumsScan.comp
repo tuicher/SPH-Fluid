@@ -1,0 +1,30 @@
+#version 450
+layout(local_size_x = 128) in;
+
+layout(std430, binding = 4) buffer Sums    { uint sums[];    };
+layout(std430, binding = 5) buffer Offsets { uint offsets[]; };
+
+uniform uint uNumGroups;
+
+shared uint sData[gl_WorkGroupSize.x];
+
+void main()
+{
+    uint gid = gl_GlobalInvocationID.x;
+    uint lid = gl_LocalInvocationID.x;
+
+    if (gid >= uNumGroups) return;
+
+    sData[lid] = sums[gid];
+    memoryBarrierShared(); barrier();
+
+    for(uint off = 1u; off < gl_WorkGroupSize.x; off <<= 1u){
+        uint v = (lid >= off) ? sData[lid - off] : 0u;
+        barrier();
+        sData[lid] += v;
+        barrier();
+    }
+
+    uint excl = (lid == 0u) ? 0u : sData[lid - 1u];
+    offsets[gid] = excl;
+}

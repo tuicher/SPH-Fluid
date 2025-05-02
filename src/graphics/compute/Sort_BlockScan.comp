@@ -1,0 +1,38 @@
+#version 450
+layout(local_size_x = 128) in;
+
+layout(std430, binding = 2) readonly  buffer Bits { uint bits[]; };
+layout(std430, binding = 3) writeonly buffer Scan { uint scan[]; };
+layout(std430, binding = 4)         buffer Sums { uint sums[]; };
+
+uniform uint uNumElements;
+
+shared uint sData[gl_WorkGroupSize.x];
+
+void main()
+{
+    uint gid = gl_GlobalInvocationID.x;
+    uint lid = gl_LocalInvocationID.x;
+    uint group = gl_WorkGroupID.x;
+
+    if (gid >= uNumElements) return;
+
+    /* --- upsweep (idéntico al que ya tenías) --- */
+    sData[lid] = bits[gid];
+    memoryBarrierShared(); barrier();
+
+    for(uint off = 1u; off < gl_WorkGroupSize.x; off <<= 1u){
+        uint v = (lid >= off) ? sData[lid - off] : 0u;
+        barrier();
+        sData[lid] += v;
+        barrier();
+    }
+
+    /* convertir a exclusivo y escribir */
+    uint excl = (lid == 0u) ? 0u : sData[lid - 1u];
+    scan[gid] = excl;
+
+    /* hilo 127 escribe la suma del grupo */
+    if(lid == gl_WorkGroupSize.x - 1u)
+        sums[group] = sData[lid];
+}
