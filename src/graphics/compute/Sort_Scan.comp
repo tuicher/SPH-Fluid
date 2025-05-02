@@ -1,41 +1,37 @@
-#version 460
-layout(local_size_x = 128) in;
+#version 450
+layout (local_size_x = 128) in;
 
-// Añadir uniforme para el número de elementos
+/*  binding = 1  →  bits de entrada (0 / 1)
+    binding = 3  →  scan exclusivo de salida
+*/
+layout(std430, binding = 1) readonly  buffer Bits  { uint inBits[];  };
+layout(std430, binding = 3) writeonly buffer Scan  { uint prefix[]; };
+
 uniform uint uNumElements;
 
-layout(std430, binding = 1) buffer BitMask {
-    uint bits[];
-};
-
-layout(std430, binding = 3) buffer Scan {
-    uint scan[];
-};
-
-shared uint temp[128];
+shared uint sData[gl_WorkGroupSize.x];
 
 void main()
 {
     uint gid = gl_GlobalInvocationID.x;
+    if (gid >= uNumElements) return;
+
     uint lid = gl_LocalInvocationID.x;
 
-    // Inicializar temp con 0 si está fuera de los límites
-    temp[lid] = (gid < uNumElements) ? bits[gid] : 0;
-    memoryBarrierShared();
-    barrier();
+    /* 1. Copiar al shared */
+    sData[lid] = inBits[gid];
+    memoryBarrierShared(); barrier();
 
-    // Blelloch scan
-    for (uint offset = 1; offset < 128; offset *= 2) {
-        uint t = (lid >= offset) ? temp[lid - offset] : 0;
+    /* 2. Scan inclusivo (upsweep) */
+    for (uint offset = 1u; offset < gl_WorkGroupSize.x; offset <<= 1u)
+    {
+        uint val = (lid >= offset) ? sData[lid - offset] : 0u;
         barrier();
-        temp[lid] += t;
+        sData[lid] += val;
         barrier();
     }
 
-    // Convertir a exclusive scan
-    uint exclusive = (lid == 0) ? 0 : temp[lid - 1];
-    barrier();
-    if (gid < uNumElements) {
-        scan[gid] = exclusive;
-    }
+    /* 3. Convertir a exclusivo */
+    uint exclusive = (lid == 0u) ? 0u : sData[lid - 1u];
+    prefix[gid] = exclusive;
 }

@@ -10,6 +10,7 @@
 #include <vector>
 #include <iostream>
 #include <memory>
+#include <numeric>
 
 #include "Camera.h"
 #include "Shader.h"

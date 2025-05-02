@@ -1,41 +1,30 @@
-#version 460
-layout(local_size_x = 128) in;
+#version 450
+layout (local_size_x = 128) in;
 
-// Añadir uniforme para el número de elementos
+layout(std430, binding = 0) readonly  buffer InKeys   { uint  keysIn[];   };
+layout(std430, binding = 1) readonly  buffer InVals   { uint  valsIn[];   };
+layout(std430, binding = 2) readonly  buffer Bits     { uint  bits[];     };
+layout(std430, binding = 3) readonly  buffer Scan     { uint  scan[];     };
+layout(std430, binding = 4) writeonly buffer OutKeys  { uint  keysOut[];  };
+layout(std430, binding = 5) writeonly buffer OutVals  { uint  valsOut[];  };
+
+uniform uint uTotalFalses;   // nº de ceros
 uniform uint uNumElements;
-
-layout(std430, binding = 0) buffer KeysIn {
-    uint keys[];
-};
-
-layout(std430, binding = 1) buffer ValuesIn {
-    uint values[];
-};
-
-layout(std430, binding = 2) buffer BitMask {
-    uint bits[];
-};
-
-layout(std430, binding = 3) buffer Scan {
-    uint scan[];
-};
-
-layout(std430, binding = 4) buffer KeysOut {
-    uint keysOut[];
-};
-
-layout(std430, binding = 5) buffer ValuesOut {
-    uint valuesOut[];
-};
-
-uniform uint uTotalFalses;
 
 void main()
 {
     uint i = gl_GlobalInvocationID.x;
-    if (i >= uNumElements) return; // Verificar límite
-    uint bit = bits[i];
-    uint targetIndex = (bit == 0) ? scan[i] : (uTotalFalses + (i - scan[i]));
-    keysOut[targetIndex] = keys[i];
-    valuesOut[targetIndex] = values[i];
+    if (i >= uNumElements) return;
+
+    bool isOne = bits[i] == 1u;
+
+    uint target;
+    if(!isOne){
+        target = i - scan[i];                 // ceros al principio
+    }else{
+        target = uTotalFalses + scan[i];      // unos detrás
+    }
+
+    keysOut[target] = keysIn[i];
+    valsOut[target] = valsIn[i];
 }
