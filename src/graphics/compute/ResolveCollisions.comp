@@ -1,0 +1,57 @@
+// ResolveCollisions.comp
+#version 460
+layout(local_size_x = 256) in;
+
+struct Particle {
+    vec4 x;  // posición
+    vec4 v;  // velocidad
+    vec4 p;  // (ya igual a x)
+    vec4 c;  // color
+    vec4 m;  // meta.x = mass
+};
+
+layout(std430, binding = 0) buffer Particles { Particle part[]; };
+
+layout(location = 0) uniform vec3 uDomainMin;   // e.g. (-0.20, -0.20, -0.20)
+layout(location = 1) uniform vec3 uDomainMax;   // e.g. ( 0.20,  0.20,  0.20)
+layout(location = 2) uniform float uRestitution;// 0.0 = inelástico, 1.0 = elástico
+
+void main()
+{
+    uint i = gl_GlobalInvocationID.x;
+    Particle P = part[i];
+
+    vec3 x = P.x.xyz;
+    vec3 v = P.v.xyz;
+
+    /* eje X ----------------------------------------------------------*/
+    if (x.x < uDomainMin.x) {
+        x.x  = uDomainMin.x;
+        v.x *= -uRestitution;
+    } else if (x.x > uDomainMax.x) {
+        x.x  = uDomainMax.x;
+        v.x *= -uRestitution;
+    }
+
+    /* eje Y ----------------------------------------------------------*/
+    if (x.y < uDomainMin.y) {
+        x.y  = uDomainMin.y;
+        v.y *= -uRestitution;
+    } else if (x.y > uDomainMax.y) {
+        x.y  = uDomainMax.y;
+        v.y *= -uRestitution;
+    }
+
+    /* eje Z ----------------------------------------------------------*/
+    if (x.z < uDomainMin.z) {
+        x.z  = uDomainMin.z;
+        v.z *= -uRestitution;
+    } else if (x.z > uDomainMax.z) {
+        x.z  = uDomainMax.z;
+        v.z *= -uRestitution;
+    }
+
+    P.x.xyz = x;
+    P.v.xyz = v;
+    part[i] = P;
+}
