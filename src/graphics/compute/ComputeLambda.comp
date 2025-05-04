@@ -1,0 +1,74 @@
+// ComputeLambda.comp
+#version 460
+layout(local_size_x = 128) in;
+
+struct Particle { vec4 x; vec4 v; vec4 p; vec4 color; vec4 meta; };
+
+layout(std430, binding = 0) buffer Particles { Particle particles[]; };
+layout(std430, binding = 3) buffer Lambdas   { float    lambdas[];   };
+
+uniform uint  uNumParticles;
+uniform float uRestDensity;   // rho0
+uniform float uRadius;
+uniform float uEpsilon;       // 1e‑6 recomendado
+
+const float PI = 3.14159265359;
+
+float poly6(float r2, float h)
+{
+    float h2 = h * h;
+    float diff = h2 - r2;
+    if (diff <= 0.0) return 0.0;
+
+    /* 315 / (64*pi*h^9)  ->  precomputo h^9 sin pow() */
+    float h4 = h2 * h2;
+    float h8 = h4 * h4;
+    float h9 = h8 * h;
+    return (315.0 / (64.0 * PI * h9)) * diff * diff * diff;
+}
+
+vec3 gradSpiky(vec3 r, float h)
+{
+    float len = length(r);
+    if (len == 0.0 || len >= h) return vec3(0.0);
+    /* -45 / (pi*h^6) */
+    float h2 = h * h;
+    float h3 = h2 * h;
+    float h6 = h3 * h3;
+    float coeff = -45.0 / (PI * h6);
+    float diff  = h - len;
+    return coeff * diff * diff * (r / len);
+}
+
+void main()
+{
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= uNumParticles) return;
+
+    vec3  pi = particles[i].p.xyz;
+    float density     = 0.0;
+    vec3  grad_i      = vec3(0.0);
+    float grad_sq_sum = 0.0;
+
+    for (uint j = 0u; j < uNumParticles; ++j)
+    {
+        vec3 rij = pi - particles[j].p.xyz;
+        float r2 = dot(rij, rij);
+        if (r2 < uRadius * uRadius)
+        {
+            float m_j = particles[j].meta.x;          // masa
+            float w   = poly6(r2, uRadius);
+
+            density += m_j * w;
+
+            vec3 grad = (m_j / uRestDensity) * gradSpiky(rij, uRadius);
+            grad_i      += grad;
+            grad_sq_sum += dot(grad, grad);
+        }
+    }
+
+    float C     = density / uRestDensity - 1.0;
+    float denom = grad_sq_sum + dot(grad_i, grad_i) + uEpsilon;
+
+    lambdas[i] = -C / denom;
+}
