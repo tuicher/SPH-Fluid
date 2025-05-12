@@ -2,8 +2,8 @@
 #version 450
 layout (local_size_x = 128) in;
 
-layout(std430, binding = 0) readonly  buffer Keys {  uint keys[];  };
-layout(std430, binding = 1) writeonly buffer Bits {  uint bits[];  };
+layout(std430, binding = 1) readonly  buffer Keys {  uint keys[];  };
+layout(std430, binding = 3) writeonly buffer Bits {  uint bits[];  };
 
 uniform uint uBit;          // bit a extraer [0‑31]
 uniform uint uNumElements;  // nº elementos válidos

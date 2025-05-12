@@ -1,22 +1,5 @@
 #include "ComputeShader.h"
 
-ComputeShader::~ComputeShader()
-{
-    if (programID_) {
-        glDeleteProgram(programID_);
-    }
-}
-
-void ComputeShader::use() const
-{
-    glUseProgram(programID_);
-}
-
-void ComputeShader::dispatch(GLuint x, GLuint y, GLuint z) const
-{
-    glDispatchCompute(x, y, z);
-}
-
 void ComputeShader::setUniform(const std::string& name, int value)
 {
     glUniform1i(getUniformLocation(name), value);

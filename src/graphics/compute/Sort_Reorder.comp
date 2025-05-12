@@ -2,12 +2,12 @@
 #version 450
 layout (local_size_x = 128) in;
 
-layout(std430, binding = 0) readonly  buffer InKeys   { uint  keysIn[];   };
-layout(std430, binding = 1) readonly  buffer InVals   { uint  valsIn[];   };
-layout(std430, binding = 2) readonly  buffer Bits     { uint  bits[];     };
-layout(std430, binding = 3) readonly  buffer Scan     { uint  scan[];     };
-layout(std430, binding = 4) writeonly buffer OutKeys  { uint  keysOut[];  };
-layout(std430, binding = 5) writeonly buffer OutVals  { uint  valsOut[];  };
+layout(std430, binding = 1) readonly  buffer InKeys   { uint  keysIn[];   };
+layout(std430, binding = 2) readonly  buffer InVals   { uint  valsIn[];   };
+layout(std430, binding = 3) readonly  buffer Bits     { uint  bits[];     };
+layout(std430, binding = 4) readonly  buffer Scan     { uint  scan[];     };
+layout(std430, binding = 7) writeonly buffer OutKeys  { uint  keysOut[];  };
+layout(std430, binding = 8) writeonly buffer OutVals  { uint  valsOut[];  };
 
 uniform uint uTotalFalses;   // nº de ceros
 uniform uint uNumElements;

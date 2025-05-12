@@ -12,7 +12,7 @@ class PBF_GPU_System
 private:
 	// Simulation params
 	
-	const int numParticles = 10800;
+	const GLuint numParticles = 5400;
 	const int numSubSteps = 5;
 	const int numIter = 2;
 	const double timeStep = 1.0 / 90.0;
@@ -28,8 +28,10 @@ private:
 	const GLuint workGroup = 128;
 	const GLuint numWorkGroups = (numParticles + workGroup - 1) / workGroup;
 	const GLint gridRes = 11;
+	const GLuint totCells = gridRes * gridRes * gridRes;
 	const float cellSize = 0.4f;
 	
+	const bool debug = true;
 	const bool verbose = false;
 
 	std::vector<PBF_GPU_Particle> particles;
@@ -46,6 +48,9 @@ private:
 	GLuint ssboKeysTmp;			// 7
 	GLuint ssboValsTmp;			// 8
 
+	GLuint ssboCellStart;		// 9
+	GLuint ssboCellEnd;			// 10
+
 	// Compute Shaders
 	ComputeShader integrate;
 	ComputeShader assign;
@@ -54,6 +59,11 @@ private:
 	ComputeShader rsScan;
 	ComputeShader rsAddOffset;
 	ComputeShader rsReorder;
+
+	ComputeShader findBounds;
+
+	const int initStart = INT_MAX;   //  0x7FFFFFFF
+	const int initEnd = -1;
 
 	void InitParticles();
 	void InitSSBOs();

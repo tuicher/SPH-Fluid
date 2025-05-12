@@ -15,7 +15,6 @@
 #include "Camera.h"
 #include "Shader.h"
 #include "ComputeShader.h"
-#include "SSBO.h"
 #include "../support/Loader.h"
 #include "../support/AppInfo.h"
 #include "../support/ImGuiLayer.h"
