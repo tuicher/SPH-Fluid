@@ -14,13 +14,15 @@
 
 #include "Camera.h"
 #include "Shader.h"
+#include "ComputeShader.h"
+#include "SSBO.h"
 #include "../support/Loader.h"
 #include "../support/AppInfo.h"
 #include "../support/ImGuiLayer.h"
 #include "../geometry/Cube.h"
 #include "../geometry/Sphere.h"
-#include "../physics/SPH_System.h"
-#include "../physics/PBF_System.h"
+//#include "../physics/SPH_System.h"
+//#include "../physics/PBF_System.h"
 #include "../physics/PBF_GPU_System.h"
 
 // DEFINES
@@ -51,8 +53,6 @@ private:
 
     static void CursorPosCallback(GLFWwindow* window, double xpos, double ypos);
     void HandleCursorPosCallback(GLFWwindow* window, double xpos, double ypos);
-
-    GLuint CompileComputeShader(const std::string& path);
 
     GLFWwindow* m_Window = nullptr;
     int m_Width;
@@ -91,7 +91,10 @@ private:
     
 
     // PBF_Implementation
-    PBF_System m_PBFSystem;
+    //PBF_System m_PBFSystem;
+
+    // GPU_PBF_Implementation
+    PBF_GPU_System m_PBFGPU_System;
 
     GLuint m_ComputeProgram;
     GLuint m_SSBO;

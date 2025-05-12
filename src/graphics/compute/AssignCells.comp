@@ -1,3 +1,4 @@
+// AssignCells.comp
 #version 460
 layout(local_size_x = 128) in;
 
@@ -40,6 +41,11 @@ void main()
 
     // Clamping dentro de la rejilla
     cellCoord = clamp(cellCoord, ivec3(0), uGridResolution - 1);
+
+    // TODO -> % ivec3?
+    // cellCoord = cellCoord % uGridResolution;
+
+    // TODO 2 -> Hash by Z-index curvs
 
     uint cellIndex = flatten3DCoord(cellCoord, uGridResolution);
     particleCellIndices[i] = cellIndex;

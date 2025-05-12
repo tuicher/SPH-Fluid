@@ -1,108 +1,173 @@
 ﻿#include "PBF_GPU_System.h"
 
-// SSBO necesarios
-/*
-Ejemplo de definición de SSBO en GLSL (compute shader)
-layout(std430, binding = 0) buffer Positions { vec4 positions[]; };         // posición actual
-layout(std430, binding = 1) buffer PredPositions { vec4 predictedPos[]; };  // posición predicha
-layout(std430, binding = 2) buffer Velocities { vec4 velocities[]; };       // velocidad
-layout(std430, binding = 3) buffer Lambdas { float lambdas[]; };            // lambda por partícula
-layout(std430, binding = 4) buffer CellIndex { uint particleCellIndices[]; };
-layout(std430, binding = 5) buffer PartIndices { uint particleIndices[]; };
-layout(std430, binding = 6) buffer CellStart { int cellStartIndices[]; };
-layout(std430, binding = 7) buffer CellEnd { int cellEndIndices[]; };
-... buffers adicionales según necesidad (densidades, neighbors, etc.)
-*/
-
-
 PBF_GPU_System::PBF_GPU_System()
 {
-    printf("Sizeof(PBF_GPU_Particle): %d bytes\n", sizeof(PBF_GPU_Particle));
+    std::cout << "######## PBF_SYSTEM_GPU ########" << std::endl;
+    std::cout << "Sizeof(PBF_GPU_Particle): " << sizeof(PBF_GPU_Particle) << "bytes" << std::endl;
+}
 
-    double massPerParticle = totalMass / static_cast<double>(numParticles);
+PBF_GPU_System::~PBF_GPU_System()
+{
+    // TODO
+}
 
-    particles = std::vector<PBF_GPU_Particle>(numParticles);
-    for (int i = 0; i < particles.size(); i++)
-    {   // vec4 meta = (x: mass, y: index, z/w: blank atm)
-        particles[i].meta = Eigen::Vector4f(massPerParticle, static_cast<float>(i), 0.0f, 0.0f);
-        
-        // Generating random position particles
-        float x = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX / 4)) - 2.0f;
-        float y = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX / 4)) - 2.0f;
-        float z = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX / 4)) - 2.0f;
-        Eigen::Vector4f rndPosition(x, y, z, 1.0f);
-        particles[i].x = rndPosition;
-        particles[i].p = rndPosition;
-
-        particles[i].v = Eigen::Vector4f::Zero();
-
-        // Color aleatorio
-        float r = static_cast<float>(rand()) / RAND_MAX;
-        float g = static_cast<float>(rand()) / RAND_MAX;
-        float b = static_cast<float>(rand()) / RAND_MAX;
-        particles[i].color = Eigen::Vector4f(r, g, b, 1.0f);
-    }
-
+void PBF_GPU_System::Init()
+{
+    InitParticles();
     InitSSBOs();
+    InitComputeShaders();
+}
+
+void PBF_GPU_System::InitParticles()
+{
+    particles = std::vector<PBF_GPU_Particle>(numParticles);
+    Eigen::Vector3f scale{ 0.5f, 2.0f, 0.5f };
+    Eigen::Vector3f offset{ 0.0f, 4.0f, 0.0f };
+
+    const double mass = totalMass / numParticles;
+
+    std::cout << "numParticles: " << numParticles << std::endl;
+    std::cout << "Mass: " << mass << std::endl;
+
+    GLuint k = 0;
+    for (int i = 0; i < numParticles; ++i)
+    {
+        Eigen::Vector3f p = scale.cwiseProduct(Eigen::Vector3f::Random()) + offset;
+
+        auto& P = particles[i];
+        P.x << p, 1.f;
+        P.v.setZero();
+        P.p = P.x;
+        P.color.setZero();
+        P.meta << mass, float(k), 0, 0;
+    }
 }
 
 void PBF_GPU_System::InitSSBOs()
 {
-    // (1) PARTICLES SSBO
-    glGenBuffers(1, &ssboParticles);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboParticles);
-    glBufferData(GL_SHADER_STORAGE_BUFFER,
-        sizeof(PBF_GPU_Particle) * particles.size(),
-        particles.data(),
-        GL_DYNAMIC_DRAW);
+    // [0] - SSBO Particles
+    glCreateBuffers(1, &ssboParticles);
+    glNamedBufferData(  ssboParticles, 
+                        sizeof(PBF_GPU_Particle) * numParticles, 
+                        particles.data(),
+                        GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
 
-    // (2) Cell indices por partícula (keys)
-    glGenBuffers(1, &ssboCellIndices);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboCellIndices);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLuint) * numParticles, nullptr, GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellIndices);
+    // [1] - cellKey
+    glCreateBuffers(1, &ssboCellKey);
+    glNamedBufferData(  ssboCellKey,
+                        sizeof(GLuint) * numParticles,
+                        nullptr,
+                        GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellKey);
 
-    // (3) Particle indices [0, 1, ..., N-1] (values)
-    glGenBuffers(1, &ssboParticleIndices);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboParticleIndices);
-    std::vector<GLuint> indices(numParticles);
-    for (int i = 0; i < numParticles; ++i) indices[i] = i;
-    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLuint) * numParticles, indices.data(), GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIndices);
+    // [2] - Particle Idx
+    std::vector<GLuint> initIdx(numParticles);
+    std::iota(initIdx.begin(), initIdx.end(), 0);
 
-    // (4) Buffers auxiliares para salida de ordenamiento (double buffer)
-    glGenBuffers(1, &ssboKeysOut);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboKeysOut);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLuint) * numParticles, nullptr, GL_DYNAMIC_DRAW);
+    glCreateBuffers(1, &ssboParticleIdx);
+    glNamedBufferData(  ssboParticleIdx,
+                        sizeof(GLuint) * numParticles,
+                        initIdx.data(),
+                        GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIdx);
 
-    glGenBuffers(1, &ssboValuesOut);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboValuesOut);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLuint) * numParticles, nullptr, GL_DYNAMIC_DRAW);
+    // ### - Radix-sort (split-scan, 32 bits)
+    // [3] - Bits
+    glCreateBuffers(1, &ssboBits);
+    glNamedBufferData(  ssboBits,
+                        sizeof(GLuint) * numParticles,
+                        nullptr,
+                        GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssboBits);
 
-    // (5) Bit mask buffer
-    glGenBuffers(1, &ssboBitMask);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboBitMask);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLuint) * numParticles, nullptr, GL_DYNAMIC_DRAW);
+    // [4] - Scan
+    glCreateBuffers(1, &ssboScan);
+    glNamedBufferData(  ssboScan,
+                        sizeof(GLuint) * numParticles,
+                        nullptr,
+                        GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssboScan);
 
-    // (6) Scan buffer
-    glGenBuffers(1, &ssboScan);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboScan);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLuint) * numParticles, nullptr, GL_DYNAMIC_DRAW);
+    // [5] - Sums
+    glCreateBuffers(1, &ssboSums);
+    glNamedBufferData(  ssboSums,
+                        sizeof(GLuint) * numWorkGroups,
+                        nullptr,
+                        GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssboSums);
 
-    // (7) Bit counter (1 uint)
-    glGenBuffers(1, &ssboBitCounter);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboBitCounter);
-    GLuint zero = 0;
-    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLuint), &zero, GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, ssboBitCounter);
+    // [6] - Offsets
+    glCreateBuffers(1, &ssboOffsets);
+    glNamedBufferData(  ssboOffsets,
+                        sizeof(GLuint) * numWorkGroups,
+                        nullptr,
+                        GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, ssboOffsets);
 
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    // [7] - KeysTmp
+    glCreateBuffers(1, &ssboKeysTmp);
+    glNamedBufferData(ssboKeysTmp,
+                        sizeof(GLuint) * numParticles,
+                        nullptr,
+                        GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, ssboKeysTmp);
+
+    // [8] - ValsTmp
+    glCreateBuffers(1, &ssboSums);
+    glNamedBufferData(  ssboSums,
+                        sizeof(GLuint) * numParticles,
+                        nullptr,
+                        GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, ssboSums);
 }
 
+void PBF_GPU_System::InitComputeShaders()
+{
+    // 1) Integrate
+    ComputeShader integrateKernel("..\\src\\graphics\\compute\\IntegrateAndPredict.comp");
+    integrate = integrateKernel;
+    integrate.use();
+    integrate.setUniform("uDeltaTime", (float) timeStep);
+    integrate.setUniform("uGravity", gravity);
+
+    // 2) Assign Cell
+    ComputeShader assignCellKernel("..\\src\\graphics\\compute\\AssignCells.comp");
+    assign = assignCellKernel;
+    assign.use();
+    assign.setUniform("uGridOrigin", Eigen::Vector3f( 0.f, 0.f, 0.f));
+    assign.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+    assign.setUniform("uCellSize", cellSize);
+
+    // 3) Radix Short
+    // a) ExtractBit
+    ComputeShader extractBitKernel("..\\src\\graphics\\compute\\Sort_ExtractBit.comp");
+    rsExtract = extractBitKernel;
+    rsExtract.use();
+    rsExtract.setUniform("uNumElements", numParticles);
+
+    // b)
+    ComputeShader scanKernel("..\\src\\graphics\\compute\\Sort_BlockScan.comp");
+    rsScan = scanKernel;
+    rsScan.use();
+    rsScan.setUniform("uNumElements", numParticles);
+
+    // c)
+    ComputeShader addOffset("..\\src\\graphics\\compute\\Sort_AddOffset.comp");
+    rsAddOffset = addOffset;
+    rsAddOffset.use();
+    rsAddOffset.setUniform("uNumElements", numParticles);
+
+    // d)
+    ComputeShader reorder("..\\src\\graphics\\compute\\Sort_Reorder.comp");
+    rsReorder = reorder;
+    rsReorder.use();
+    rsReorder.setUniform("uNumElements", numParticles);
+}
 
 void PBF_GPU_System::Step()
 {
+    /*
     int numGroups = (numParticles + 127) / 128;
 
     // (1) Integrate & Predict Position
@@ -188,4 +253,28 @@ void PBF_GPU_System::Step()
 
     // (4) TO DO: shader FindCellBounds.comp
     // Generará ssboCellStart y ssboCellEnd desde currentKeys
+    */
 }
+
+void PBF_GPU_System::Test()
+{
+    // 1) Integrate
+    integrate.use();
+    integrate.dispatch(numWorkGroups);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    // 2) Hash
+    assign.use();
+    assign.dispatch(numWorkGroups);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    // 3) Radix Short
+    for (int bit = 0; bit < 32; ++bit)
+    {
+        // a) Extract bit
+        rsExtract.use();
+        rsExtract.setUniform("uBit", bit);
+    }
+}
+
+

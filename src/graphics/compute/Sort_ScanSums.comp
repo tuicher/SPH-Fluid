@@ -1,0 +1,31 @@
+#version 450
+layout(local_size_x = 128) in;
+
+layout(std430, binding = 4) readonly  buffer Sums    { uint sums[];    };
+layout(std430, binding = 5) writeonly buffer Offsets { uint offsets[]; };
+
+shared uint sData[gl_WorkGroupSize.x];
+
+void main()
+{
+    /* Único work‑group */
+    uint gid = gl_LocalInvocationID.x;
+    uint N   = sums.length();               // nº de bloques (= G)
+
+    if (gid < N)  sData[gid] = sums[gid];
+    else          sData[gid] = 0u;
+
+    memoryBarrierShared(); barrier();
+
+    /* upsweep inclusivo */
+    for (uint off=1u; off<gl_WorkGroupSize.x; off<<=1u){
+        uint t = (gid>=off)? sData[gid-off] : 0u;
+        barrier();
+        sData[gid] += t;
+        barrier();
+    }
+
+    /* exclusivo */
+    uint excl = (gid==0u)? 0u : sData[gid-1u];
+    if (gid < N) offsets[gid] = excl;
+}

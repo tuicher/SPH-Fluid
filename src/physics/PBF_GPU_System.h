@@ -1,13 +1,17 @@
 // PBF_GPU_System.h
 
 #include <glad/glad.h>
+#include <iostream>
+#include <numeric>
 
 #include "PBF_GPU_Particle.h"
+#include "../graphics/ComputeShader.h"
 
 class PBF_GPU_System
 {
 private:
 	// Simulation params
+	
 	const int numParticles = 10800;
 	const int numSubSteps = 5;
 	const int numIter = 2;
@@ -18,37 +22,48 @@ private:
 	const double damping = 0.999;
 	const double viscosity = 0.050;
 	const double totalMass = 3000.0;
+	const Eigen::Vector3f gravity = Eigen::Vector3f(0, -9.81f, 0);
+	
+	// Kernels Consts
+	const GLuint workGroup = 128;
+	const GLuint numWorkGroups = (numParticles + workGroup - 1) / workGroup;
+	const GLint gridRes = 11;
+	const float cellSize = 0.4f;
+	
 	const bool verbose = false;
 
 	std::vector<PBF_GPU_Particle> particles;
 
 	// SSBOs
-	GLuint ssboParticles;
-	GLuint ssboCellIndices;
-	GLuint ssboParticleIndices;
+	GLuint ssboParticles;		// 0
+	GLuint ssboCellKey;			// 1
+	GLuint ssboParticleIdx;		// 2
+		// -- Radix Short
+	GLuint ssboBits;			// 3
+	GLuint ssboScan;			// 4
+	GLuint ssboSums;			// 5
+	GLuint ssboOffsets;			// 6
+	GLuint ssboKeysTmp;			// 7
+	GLuint ssboValsTmp;			// 8
 
-	GLuint ssboKeys;       // copia de cellIndices para ordenar
-	GLuint ssboValues;     // copia de particleIndices para ordenar
-	GLuint ssboKeysOut;    // sorted output
-	GLuint ssboValuesOut;
+	// Compute Shaders
+	ComputeShader integrate;
+	ComputeShader assign;
 
-	GLuint ssboBitMask;    // bits extraídos por radix
-	GLuint ssboScan;       // scan intermedio
-	GLuint ssboBitCounter; // para contar bits == 1 (atomic)
+	ComputeShader rsExtract;
+	ComputeShader rsScan;
+	ComputeShader rsAddOffset;
+	ComputeShader rsReorder;
 
-	// Compute shader programs
-	GLuint programIntegrate;
-	GLuint programAssignCells;
-	GLuint programExtractBit;
-	GLuint programScan;
-	GLuint programCountOnes;
-	GLuint programReorder;
-
+	void InitParticles();
 	void InitSSBOs();
+	void InitComputeShaders();
 
 public:
 	PBF_GPU_System();
 	~PBF_GPU_System();
 
+	void Init();
 	void Step();
+	void Test();
 };
