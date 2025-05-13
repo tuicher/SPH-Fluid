@@ -57,6 +57,7 @@ Renderer::Renderer(int width, int height, const char* title)
     InitOpenGL();
     //InitScene();
     m_PBFGPU_System.Init();
+
     m_PBFGPU_System.Test();
     // Ajustar la cámara a la ventana inicial
     m_Camera.SetAspectRatio((float)m_Width / (float)m_Height);
