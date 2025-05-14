@@ -22,6 +22,7 @@ private:
 	const double damping = 0.999;
 	const double viscosity = 0.050;
 	const double totalMass = 3000.0;
+	const double massPerParticle = totalMass / numParticles;
 	const Eigen::Vector3f gravity = Eigen::Vector3f(0, -9.81f, 0);
 	
 	// Kernels Consts
@@ -52,6 +53,7 @@ private:
 	GLuint ssboCellEnd;			// 10
 	
 	GLuint ssboLambda;			// 11
+	GLuint ssboDeltaP;			// 12
 
 	// Compute Shaders
 	ComputeShader integrate;
@@ -66,6 +68,8 @@ private:
 	ComputeShader findBounds;
 
 	ComputeShader computeLambda;
+	ComputeShader computeDeltaP;
+	ComputeShader applyDeltaP;
 
 
 	const int initStart = INT_MAX;   //  0x7FFFFFFF

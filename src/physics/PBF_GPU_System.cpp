@@ -24,10 +24,8 @@ void PBF_GPU_System::InitParticles()
     Eigen::Vector3f scale{ 0.5f, 10.0f, 0.5f };
     Eigen::Vector3f offset{ 0.0f, 4.0f, 0.0f };
 
-    const double mass = totalMass / numParticles;
-
     std::cout << "numParticles: " << numParticles << std::endl;
-    std::cout << "Mass: " << mass << std::endl;
+    std::cout << "Mass: " << massPerParticle << std::endl;
 
     GLuint k = 0;
      
@@ -44,7 +42,7 @@ void PBF_GPU_System::InitParticles()
         P.v.setZero();
         P.p = P.x;
         P.color.setZero();
-        P.meta << mass, float(k), 0, 0;
+        P.meta << massPerParticle, float(k), 0, 0;
     }
 }
 
@@ -150,7 +148,15 @@ void PBF_GPU_System::InitSSBOs()
                         sizeof(float) * numParticles,
                         nullptr,
                         GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 11, ssboCellEnd);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 11, ssboLambda);
+
+    // [12] - DeltaPs
+    glCreateBuffers(1, &ssboDeltaP);
+    glNamedBufferData(  ssboDeltaP,
+                        sizeof(Eigen::Vector4f) * numParticles,
+                        nullptr,
+                        GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 12, ssboDeltaP);
 }
 
 void PBF_GPU_System::InitComputeShaders()
@@ -158,52 +164,67 @@ void PBF_GPU_System::InitComputeShaders()
     // 1) Integrate
     integrate = ComputeShader("..\\src\\graphics\\compute\\IntegrateAndPredict.comp");
     integrate.use();
-    integrate.setUniform("uDeltaTime", (float) timeStep);
-    integrate.setUniform("uGravity", gravity);
+    integrate.setUniform("uDeltaTime",          (float) timeStep);
+    integrate.setUniform("uGravity",            gravity);
 
     // 2) Assign Cell
     assign = ComputeShader("..\\src\\graphics\\compute\\AssignCells.comp");
     assign.use();
-    assign.setUniform("uGridOrigin", Eigen::Vector3f( 0.f, 0.f, 0.f));
-    assign.setUniform("uGridResolution", gridRes, gridRes, gridRes);
-    assign.setUniform("uCellSize", cellSize);
+    assign.setUniform("uGridOrigin",            Eigen::Vector3f( 0.f, 0.f, 0.f));
+    assign.setUniform("uGridResolution",        gridRes, gridRes, gridRes);
+    assign.setUniform("uCellSize",              cellSize);
 
     // 3) Radix Short
     // a) ExtractBit
     rsExtract = ComputeShader("..\\src\\graphics\\compute\\Sort_ExtractBit.comp");
     rsExtract.use();
-    rsExtract.setUniform("uNumElements", numParticles);
+    rsExtract.setUniform("uNumElements",        numParticles);
 
     // b)
     
     rsScan = ComputeShader("..\\src\\graphics\\compute\\Sort_BlockScan.comp");
     rsScan.use();
-    rsScan.setUniform("uNumElements", numParticles);
+    rsScan.setUniform("uNumElements",           numParticles);
 
     // c)
     rsAddOffset = ComputeShader("..\\src\\graphics\\compute\\Sort_AddOffset.comp");
     rsAddOffset.use();
-    rsAddOffset.setUniform("uNumElements", numParticles);
+    rsAddOffset.setUniform("uNumElements",      numParticles);
 
     // d)
     rsReorder = ComputeShader("..\\src\\graphics\\compute\\Sort_Reorder.comp");
     rsReorder.use();
-    rsReorder.setUniform("uNumElements", numParticles);
+    rsReorder.setUniform("uNumElements",        numParticles);
     
     // 4) Find-Cell-Bounds
     findBounds = ComputeShader("..\\src\\graphics\\compute\\FindCellBounds.comp");
     findBounds.use();
-    findBounds.setUniform("uNumElements", numParticles);
+    findBounds.setUniform("uNumElements",       numParticles);
 
     // 5) PBF
-    // 5.a - ComputeLambda
+    // 5.a - Compute Lambdas
     computeLambda = ComputeShader("..\\src\\graphics\\compute\\ComputeLambda.comp");
     computeLambda.use();
-    computeLambda.setUniform("uNumParticles", numParticles);
-    computeLambda.setUniform("uRestDensity", (float) restDensity);
-    computeLambda.setUniform("uRadius", (float) radius);
-    computeLambda.setUniform("uEpsilon", (float) epsilon);
+    computeLambda.setUniform("uNumParticles",   numParticles);
+    computeLambda.setUniform("uRestDensity",    (float) restDensity);
+    computeLambda.setUniform("uRadius",         (float) radius);
+    computeLambda.setUniform("uEpsilon",        (float) epsilon);
     computeLambda.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+
+    // 5.b - Compute DeltaPs
+    computeDeltaP = ComputeShader("..\\src\\graphics\\compute\\ComputeDeltaP.comp");
+    computeDeltaP.use();
+    computeDeltaP.setUniform("uNumParticles",   numParticles);
+    computeDeltaP.setUniform("uRadius",         (float) radius);
+    computeDeltaP.setUniform("uRestDensity",    (float) restDensity);
+    computeDeltaP.setUniform("uSCorrK",         0.3f);
+    computeDeltaP.setUniform("uSCorrN",         4.0f);
+    computeDeltaP.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+
+    // 5.c - Apply DeltaPs
+    applyDeltaP = ComputeShader("..\\src\\graphics\\compute\\ApplyDeltaP.comp");
+    applyDeltaP.use();
+    applyDeltaP.setUniform("uNumParticles",   numParticles);
 }
 
 void PBF_GPU_System::Step()
@@ -325,9 +346,33 @@ void PBF_GPU_System::Test()
         rsScan.dispatch(numWorkGroups);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
+        // c) prefixScan - in CPU
+        std::vector<GLuint> sums(numWorkGroups), offs(numWorkGroups);
+        glGetNamedBufferSubData(    ssboSums, 
+                                    0, 
+                                    sizeof(GLuint) * numWorkGroups,
+                                    sums.data());
+        GLuint numOnes = 0;
+        for (GLuint g = 0; g < numWorkGroups; ++g)
+        { 
+            offs[g] = numOnes;
+            numOnes += sums[g];
+                
+        }
+        glNamedBufferSubData(   ssboOffsets, 
+                                0,
+                                sizeof(GLuint) * numWorkGroups,
+                                offs.data());;
+        
+        // d) addOffset
+        rsAddOffset.use();
+        rsAddOffset.setUniform("uNumElements", numParticles);
+        rsAddOffset.dispatch(numWorkGroups);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
         if (debug)
         {
-            if (verbose)               
+            if (verbose)
             {
                 int n = 32;
                 std::vector<GLuint> bits(n), scan(n);
@@ -359,30 +404,7 @@ void PBF_GPU_System::Test()
             }
         }
 
-        // c) prefixScan - in CPU
-        std::vector<GLuint> sums(numWorkGroups), offs(numWorkGroups);
-        glGetNamedBufferSubData(    ssboSums, 
-                                    0, 
-                                    sizeof(GLuint) * numWorkGroups,
-                                    sums.data());
-        GLuint numOnes = 0;
-        for (GLuint g = 0; g < numWorkGroups; ++g)
-        { 
-            offs[g] = numOnes;
-            numOnes += sums[g];
-                
-        }
-        glNamedBufferSubData(   ssboOffsets, 
-                                0,
-                                sizeof(GLuint) * numWorkGroups,
-                                offs.data());;
-        
-        // d) addOffset
-        rsAddOffset.use();
-        rsAddOffset.setUniform("uNumElements", numParticles);
-        rsAddOffset.dispatch(numWorkGroups);
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-        
+        // e) Reorder
         rsReorder.use();
         rsReorder.setUniform("uNumElements", numParticles);
         rsReorder.setUniform("uTotalFalses", numParticles - numOnes);
@@ -487,13 +509,13 @@ void PBF_GPU_System::Test()
     // 5) PBF Steps
     // 5.a Compute Lambdas
     computeLambda.use();
-
+    
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellKey);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIdx);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 11, ssboLambda);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, ssboCellStart);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, ssboCellEnd);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 11, ssboLambda);
 
     computeLambda.dispatch(numWorkGroups);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -504,10 +526,93 @@ void PBF_GPU_System::Test()
         std::array<float, kPrint> lambda{};
         glGetNamedBufferSubData(ssboLambda, 0,
             sizeof(float) * kPrint, lambda.data());
-        std::cout << "lambda[0.." << kPrint - 1 << "]: ";
-        for (auto v : lambda) std::cout << v << ' ';
+        std::cout << "lambda[0.." << kPrint - 1 << "]:\n";
+        for (auto v : lambda) std::cout << v << '\n';
+    }
+
+    // 5.b Compute DeltaPs
+    computeDeltaP.use();
+
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellKey);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIdx);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, ssboCellStart);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, ssboCellEnd);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 11, ssboLambda);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 12, ssboDeltaP);
+
+    computeDeltaP.dispatch(numWorkGroups);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    if (debug)
+    {
+        constexpr GLuint kPrint = 16;
+        std::array<Eigen::Vector4f, kPrint> dp{};
+        glGetNamedBufferSubData(    ssboDeltaP,
+                                    0,
+                                    sizeof(Eigen::Vector4f) * kPrint,
+                                    dp.data());
+        std::cout << "deltaP[0.." << kPrint - 1 << "].xyz :\n";
+        for (auto& v : dp)
+            std::cout << '(' << v.x() << ',' << v.y() << ',' << v.z() << ") \n";
         std::cout << '\n';
     }
+
+    // 5.c Apply DeltaPs
+
+    applyDeltaP.use();
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 12, ssboDeltaP);
+
+    // Copy Previous values
+    std::vector<PBF_GPU_Particle> before(numParticles);
+    std::vector<Eigen::Vector4f>  deltaP(numParticles);
+
+    glGetNamedBufferSubData( ssboParticles, 
+                                0,
+                                sizeof(PBF_GPU_Particle) * numParticles, 
+                                before.data());
+
+    glGetNamedBufferSubData( ssboDeltaP, 
+                                0,
+                                sizeof(Eigen::Vector4f) * numParticles, 
+                                deltaP.data());
+
+    applyDeltaP.dispatch(numWorkGroups);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    // Copy Post Values
+    std::vector<PBF_GPU_Particle> after(numParticles);
+    glGetNamedBufferSubData(ssboParticles, 0,
+        sizeof(PBF_GPU_Particle) * numParticles, after.data());
+
+    // Compare
+    double maxErr = 0.0, rms = 0.0;
+    const int Nshow = 16;
+    int shown = 0;
+
+    for (GLuint i = 0; i < numParticles; ++i)
+    {
+        Eigen::Vector3f expected = before[i].p.head<3>() + deltaP[i].head<3>();
+        Eigen::Vector3f got = after[i].p.head<3>();
+        double err = (got - expected).norm();
+
+        maxErr = std::max(maxErr, err);
+        rms += err * err;
+
+        if (err > 1e-6 && shown < Nshow)
+        {
+            std::cout << "i=" << i
+                << "  exp(" << expected.transpose() << ")"
+                << "  gpu(" << got.transpose() << ")"
+                << "  |err|=" << err << '\n';
+            ++shown;
+        }
+    }
+    rms = std::sqrt(rms / numParticles);
+
+    std::cout << "DeltaP CHECK  →  max-error = " << maxErr
+        << "   RMS-error = " << rms << '\n';
 }
 
 void PBF_GPU_System::Test(int n)
