@@ -369,40 +369,38 @@ void PBF_GPU_System::Test()
         rsAddOffset.setUniform("uNumElements", numParticles);
         rsAddOffset.dispatch(numWorkGroups);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
-        if (debug)
+#ifdef DEBUG
+        if (verbose)
         {
-            if (verbose)
-            {
-                int n = 32;
-                std::vector<GLuint> bits(n), scan(n);
-                glGetNamedBufferSubData(ssboBits, 0, n * sizeof(GLuint), bits.data());
-                glGetNamedBufferSubData(ssboScan, 0, n * sizeof(GLuint), scan.data());
-                std::cout << "Bit [" << bit << "]\n";
-                std::cout << "bits : \t"; for (auto b : bits)  std::cout << b << ' '; std::cout << '\n';
-                std::cout << "scan : \t"; for (auto s : scan)  std::cout << s << ' '; std::cout << '\n';
-            }
-            else
-            {
-                const GLuint Ncheck = 8 * 1024;
-                std::vector<GLuint> bitsCPU(Ncheck), scanGPU(Ncheck);
-
-                glGetNamedBufferSubData(ssboBits, 0, Ncheck * sizeof(GLuint), bitsCPU.data());
-                glGetNamedBufferSubData(ssboScan, 0, Ncheck * sizeof(GLuint), scanGPU.data());
-
-                bool ok = true;
-                GLuint prefix = 0;
-                for (GLuint i = 0; i < Ncheck && ok; ++i)
-                {
-                    if (scanGPU[i] != prefix)              ok = false;
-                    prefix += bitsCPU[i];
-                }
-                if (ok && prefix != scanGPU.back() + bitsCPU.back()) ok = false;   // último valor
-
-                std::cout << "[CHECK bit " << bit << "] scan " << (ok ? "OK\n"
-                    : "ERROR: mismatch in prefix-scan\n");
-            }
+            int n = 32;
+            std::vector<GLuint> bits(n), scan(n);
+            glGetNamedBufferSubData(ssboBits, 0, n * sizeof(GLuint), bits.data());
+            glGetNamedBufferSubData(ssboScan, 0, n * sizeof(GLuint), scan.data());
+            std::cout << "Bit [" << bit << "]\n";
+            std::cout << "bits : \t"; for (auto b : bits)  std::cout << b << ' '; std::cout << '\n';
+            std::cout << "scan : \t"; for (auto s : scan)  std::cout << s << ' '; std::cout << '\n';
         }
+        else
+        {
+            const GLuint Ncheck = 8 * 1024;
+            std::vector<GLuint> bitsCPU(Ncheck), scanGPU(Ncheck);
+
+            glGetNamedBufferSubData(ssboBits, 0, Ncheck * sizeof(GLuint), bitsCPU.data());
+            glGetNamedBufferSubData(ssboScan, 0, Ncheck * sizeof(GLuint), scanGPU.data());
+
+            bool ok = true;
+            GLuint prefix = 0;
+            for (GLuint i = 0; i < Ncheck && ok; ++i)
+            {
+                if (scanGPU[i] != prefix)              ok = false;
+                prefix += bitsCPU[i];
+            }
+            if (ok && prefix != scanGPU.back() + bitsCPU.back()) ok = false;   // último valor
+
+            std::cout << "[CHECK bit " << bit << "] scan " << (ok ? "OK\n"
+                : "ERROR: mismatch in prefix-scan\n");
+        }
+#endif // DEBUG
 
         // e) Reorder
         rsReorder.use();
@@ -419,39 +417,37 @@ void PBF_GPU_System::Test()
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, ssboKeysTmp);      // Keys temporales
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, ssboValsTmp);      // Vals temporales
     }
-
+#ifdef DEBUG
     // Checking Radix Short
-    if (debug)
+    if (verbose)
     {
-        if (verbose)
+        const GLuint kPrint = numParticles;
+        std::vector<GLuint> sortedKeys(kPrint), sortedIdx(kPrint);
+        glGetNamedBufferSubData(ssboCellKey, 0, sizeof(GLuint) * kPrint, sortedKeys.data());
+        glGetNamedBufferSubData(ssboParticleIdx, 0, sizeof(GLuint) * kPrint, sortedIdx.data());
+        const GLuint C = gridRes * gridRes * gridRes;
+
+        std::cout << "\n--- Resultado etapa 3: Radix Sort (primeros " << kPrint << ") ---\n";
+        for (GLuint i = 0; i < kPrint; ++i)
         {
-            const GLuint kPrint = numParticles;
-            std::vector<GLuint> sortedKeys(kPrint), sortedIdx(kPrint);
-            glGetNamedBufferSubData(ssboCellKey, 0, sizeof(GLuint) * kPrint, sortedKeys.data());
-            glGetNamedBufferSubData(ssboParticleIdx, 0, sizeof(GLuint) * kPrint, sortedIdx.data());
-            const GLuint C = gridRes * gridRes * gridRes;
-
-            std::cout << "\n--- Resultado etapa 3: Radix Sort (primeros " << kPrint << ") ---\n";
-            for (GLuint i = 0; i < kPrint; ++i)
-            {
-                std::cout << " i=" << i << "  cellKey=" << sortedKeys[i]
-                    << "/" << C << "  particleIdx=" << sortedIdx[i] << '\n';
-            }
-        }
-        else
-        {
-            std::vector<GLuint> k(numParticles);
-            glGetNamedBufferSubData(ssboCellKey, 0,
-                numParticles * sizeof(GLuint), k.data());
-
-            bool sorted = std::is_sorted(k.begin(), k.end());
-            bool withinRange = *std::max_element(k.begin(), k.end()) < gridRes * gridRes * gridRes;
-
-            std::cout << "[CHECK radix sort] "
-                << (sorted ? "sorted" : "NOT sorted") << " | "
-                << (withinRange ? "keys OK\n" : "keys fuera de rango\n");
+            std::cout << " i=" << i << "  cellKey=" << sortedKeys[i]
+                << "/" << C << "  particleIdx=" << sortedIdx[i] << '\n';
         }
     }
+    else
+    {
+        std::vector<GLuint> k(numParticles);
+        glGetNamedBufferSubData(ssboCellKey, 0,
+            numParticles * sizeof(GLuint), k.data());
+
+        bool sorted = std::is_sorted(k.begin(), k.end());
+        bool withinRange = *std::max_element(k.begin(), k.end()) < gridRes * gridRes * gridRes;
+
+        std::cout << "[CHECK radix sort] "
+            << (sorted ? "sorted" : "NOT sorted") << " | "
+            << (withinRange ? "keys OK\n" : "keys fuera de rango\n");
+    }
+#endif // DEBUG
 
     // 4) Find-Cell-Bounds
     findBounds.use();
@@ -468,43 +464,41 @@ void PBF_GPU_System::Test()
     findBounds.dispatch(numWorkGroups);
 
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_ATOMIC_COUNTER_BARRIER_BIT);
-
-    if (debug)
+#ifdef DEBUG
+    std::vector<int> start(totCells), end(totCells);
+    glGetNamedBufferSubData(ssboCellStart, 0, totCells * sizeof(int), start.data());
+    glGetNamedBufferSubData(ssboCellEnd, 0, totCells * sizeof(int), end.data());
+    if (verbose)
     {
-        std::vector<int> start(totCells), end(totCells);
-        glGetNamedBufferSubData(ssboCellStart, 0, totCells * sizeof(int), start.data());
-        glGetNamedBufferSubData(ssboCellEnd, 0, totCells * sizeof(int), end.data());
-        if (verbose)
-        {
-            std::cout << "\n--- Cell bounds ---\n";
-            for (GLuint c = 0; c < totCells; ++c)
-                if (start[c] != INT_MAX)
-                    std::cout << "cell " << c << " : [" << start[c] << ", " << end[c] << ")\n";
-        }
-        else
-        {
-            bool allOk = true;
-            int prevEnd = 0, total = 0;
-
-            for (GLuint c = 0; c < totCells; ++c)
-            {
-                int s = start[c], e = end[c];
-                if (s == INT_MAX && e == -1) continue;   // celda vacía ― nada que comprobar
-                // (a) índices consistentes
-                if (!(0 <= s && s < e && e <= (int)numParticles)) allOk = false;
-                // (b) adyacentes a la celda anterior
-                if (s != prevEnd) allOk = false;
-                prevEnd = e;
-                total += e - s;
-            }
-            allOk &= (total == (int)numParticles);
-
-            std::cout << "[CHECK cell bounds] "
-                << (allOk ? "OK (covers 100 %)"
-                    : "ERROR: huecos/solapes en las celdas")
-                << '\n';
-        }
+        std::cout << "\n--- Cell bounds ---\n";
+        for (GLuint c = 0; c < totCells; ++c)
+            if (start[c] != INT_MAX)
+                std::cout << "cell " << c << " : [" << start[c] << ", " << end[c] << ")\n";
     }
+    else
+    {
+        bool allOk = true;
+        int prevEnd = 0, total = 0;
+
+        for (GLuint c = 0; c < totCells; ++c)
+        {
+            int s = start[c], e = end[c];
+            if (s == INT_MAX && e == -1) continue;   // celda vacía ― nada que comprobar
+            // (a) índices consistentes
+            if (!(0 <= s && s < e && e <= (int)numParticles)) allOk = false;
+            // (b) adyacentes a la celda anterior
+            if (s != prevEnd) allOk = false;
+            prevEnd = e;
+            total += e - s;
+        }
+        allOk &= (total == (int)numParticles);
+
+        std::cout << "[CHECK cell bounds] "
+            << (allOk ? "OK (covers 100 %)"
+                : "ERROR: huecos/solapes en las celdas")
+            << '\n';
+    }
+#endif // DEBUG 
 
     // 5) PBF Steps
     // 5.a Compute Lambdas
@@ -520,15 +514,14 @@ void PBF_GPU_System::Test()
     computeLambda.dispatch(numWorkGroups);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
     
-    if (debug) 
-    {
-        constexpr GLuint kPrint = 16;
-        std::array<float, kPrint> lambda{};
-        glGetNamedBufferSubData(ssboLambda, 0,
-            sizeof(float) * kPrint, lambda.data());
-        std::cout << "lambda[0.." << kPrint - 1 << "]:\n";
-        for (auto v : lambda) std::cout << v << '\n';
-    }
+#ifdef DEBUG
+    constexpr GLuint kPrint = 16;
+    std::array<float, kPrint> lambda{};
+    glGetNamedBufferSubData(ssboLambda, 0,
+        sizeof(float) * kPrint, lambda.data());
+    std::cout << "lambda[0.." << kPrint - 1 << "]:\n";
+    for (auto v : lambda) std::cout << v << '\n';
+#endif // DEBUG
 
     // 5.b Compute DeltaPs
     computeDeltaP.use();
@@ -544,47 +537,48 @@ void PBF_GPU_System::Test()
     computeDeltaP.dispatch(numWorkGroups);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-    if (debug)
-    {
-        constexpr GLuint kPrint = 16;
-        std::array<Eigen::Vector4f, kPrint> dp{};
-        glGetNamedBufferSubData(    ssboDeltaP,
-                                    0,
-                                    sizeof(Eigen::Vector4f) * kPrint,
-                                    dp.data());
-        std::cout << "deltaP[0.." << kPrint - 1 << "].xyz :\n";
-        for (auto& v : dp)
-            std::cout << '(' << v.x() << ',' << v.y() << ',' << v.z() << ") \n";
-        std::cout << '\n';
-    }
+#ifdef DEBUG  
+    std::array<Eigen::Vector4f, kPrint> dp{};
+    glGetNamedBufferSubData(ssboDeltaP,
+        0,
+        sizeof(Eigen::Vector4f)* kPrint,
+        dp.data());
+    std::cout << "deltaP[0.." << kPrint - 1 << "].xyz :\n";
+    for (auto& v : dp)
+        std::cout << '(' << v.x() << ',' << v.y() << ',' << v.z() << ") \n";
+    std::cout << '\n';
+#endif // DEBUG
 
     // 5.c Apply DeltaPs
-
     applyDeltaP.use();
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 12, ssboDeltaP);
 
-    // Copy Previous values
+#ifdef DEBUG  
     std::vector<PBF_GPU_Particle> before(numParticles);
     std::vector<Eigen::Vector4f>  deltaP(numParticles);
 
-    glGetNamedBufferSubData( ssboParticles, 
-                                0,
-                                sizeof(PBF_GPU_Particle) * numParticles, 
-                                before.data());
+    glGetNamedBufferSubData(ssboParticles,
+        0,
+        sizeof(PBF_GPU_Particle) * numParticles,
+        before.data());
 
-    glGetNamedBufferSubData( ssboDeltaP, 
-                                0,
-                                sizeof(Eigen::Vector4f) * numParticles, 
-                                deltaP.data());
+    glGetNamedBufferSubData(ssboDeltaP,
+        0,
+        sizeof(Eigen::Vector4f) * numParticles,
+        deltaP.data());
+#endif // DEBUG
 
     applyDeltaP.dispatch(numWorkGroups);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
+    
+#ifdef DEBUG 
     // Copy Post Values
     std::vector<PBF_GPU_Particle> after(numParticles);
-    glGetNamedBufferSubData(ssboParticles, 0,
-        sizeof(PBF_GPU_Particle) * numParticles, after.data());
+    glGetNamedBufferSubData(ssboParticles,
+        0,
+        sizeof(PBF_GPU_Particle)* numParticles,
+        after.data());
 
     // Compare
     double maxErr = 0.0, rms = 0.0;
@@ -613,6 +607,7 @@ void PBF_GPU_System::Test()
 
     std::cout << "DeltaP CHECK  →  max-error = " << maxErr
         << "   RMS-error = " << rms << '\n';
+#endif // DEBUG
 }
 
 void PBF_GPU_System::Test(int n)

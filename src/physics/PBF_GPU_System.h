@@ -7,6 +7,8 @@
 #include "PBF_GPU_Particle.h"
 #include "../graphics/ComputeShader.h"
 
+#define DEBUG
+
 class PBF_GPU_System
 {
 private:
@@ -32,7 +34,6 @@ private:
 	const GLuint totCells = gridRes * gridRes * gridRes;
 	const float cellSize = 0.4f;
 	
-	const bool debug = true;
 	const bool verbose = false;
 
 	std::vector<PBF_GPU_Particle> particles;
