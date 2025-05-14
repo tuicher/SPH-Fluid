@@ -217,14 +217,20 @@ void PBF_GPU_System::InitComputeShaders()
     computeDeltaP.setUniform("uNumParticles",   numParticles);
     computeDeltaP.setUniform("uRadius",         (float) radius);
     computeDeltaP.setUniform("uRestDensity",    (float) restDensity);
-    computeDeltaP.setUniform("uSCorrK",         0.3f);
+    computeDeltaP.setUniform("uSCorrK",         (float) massPerParticle * 1e-4f);
     computeDeltaP.setUniform("uSCorrN",         4.0f);
     computeDeltaP.setUniform("uGridResolution", gridRes, gridRes, gridRes);
 
     // 5.c - Apply DeltaPs
     applyDeltaP = ComputeShader("..\\src\\graphics\\compute\\ApplyDeltaP.comp");
     applyDeltaP.use();
-    applyDeltaP.setUniform("uNumParticles",   numParticles);
+    applyDeltaP.setUniform("uNumParticles",     numParticles);
+
+    // 6) Update Velocity
+    updateVelocity = ComputeShader("..\\src\\graphics\\compute\\UpdateVelocity.comp");
+    updateVelocity.use();
+    updateVelocity.setUniform("uDeltaTime",     (float) timeStep);
+    updateVelocity.setUniform("uDamping",       (float) damping);
 }
 
 void PBF_GPU_System::Step()
@@ -608,6 +614,12 @@ void PBF_GPU_System::Test()
     std::cout << "DeltaP CHECK  →  max-error = " << maxErr
         << "   RMS-error = " << rms << '\n';
 #endif // DEBUG
+
+    // 6 Update Velocity
+    updateVelocity.use();
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
+    updateVelocity.dispatch(numWorkGroups);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
 void PBF_GPU_System::Test(int n)

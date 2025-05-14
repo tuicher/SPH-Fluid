@@ -107,7 +107,7 @@ void main()
 
             vec3 grad = (mj/uRestDensity)*gradSpiky(rij,uRadius);
             grad_i  += grad;
-            grad2   += dot(grad,grad);
+            grad2   += (1.0 / mj) * dot(grad,grad);
         }
     }
 

@@ -13,14 +13,13 @@ class PBF_GPU_System
 {
 private:
 	// Simulation params
-	
 	const GLuint numParticles = 5400 * 10;
 	const int numSubSteps = 5;
 	const int numIter = 2;
 	const double timeStep = 1.0 / 90.0;
 	const double radius = 0.10;
 	const double restDensity = 1000.0;
-	const double epsilon = 1e-4;
+	const double epsilon = 1e+05;
 	const double damping = 0.999;
 	const double viscosity = 0.050;
 	const double totalMass = 3000.0;
@@ -71,7 +70,8 @@ private:
 	ComputeShader computeLambda;
 	ComputeShader computeDeltaP;
 	ComputeShader applyDeltaP;
-
+	
+	ComputeShader updateVelocity;
 
 	const int initStart = INT_MAX;   //  0x7FFFFFFF
 	const int initEnd = -1;
