@@ -14,6 +14,7 @@ PBF_GPU_System::~PBF_GPU_System()
 void PBF_GPU_System::Init()
 {
     InitParticles();
+    SetParticlesColors();
     InitSSBOs();
     InitComputeShaders();
 }
@@ -21,7 +22,7 @@ void PBF_GPU_System::Init()
 void PBF_GPU_System::InitParticles()
 {
     particles = std::vector<PBF_GPU_Particle>(numParticles);
-    Eigen::Vector3f scale{ 0.5f, 10.0f, 0.5f };
+    Eigen::Vector3f scale{ 0.5f, 2.0f, 0.5f };
     Eigen::Vector3f offset{ 0.0f, 4.0f, 0.0f };
 
     std::cout << "numParticles: " << numParticles << std::endl;
@@ -36,13 +37,54 @@ void PBF_GPU_System::InitParticles()
         auto& P = particles[i];
         P.x << p, 1.f;
 
-        if (i == 0)
-            P.x.z() = p.z() + 0.05f;
-
         P.v.setZero();
         P.p = P.x;
-        P.color.setZero();
+        P.color = Eigen::Vector4f::Random();
         P.meta << massPerParticle, float(k), 0, 0;
+    }
+}
+
+void PBF_GPU_System::SetParticlesColors()
+{
+    float minY = std::numeric_limits<float>::max();
+    float maxY = std::numeric_limits<float>::lowest();
+
+    for (const auto& p : particles) {
+        float y = p.x.y();
+        minY = std::min(minY, y);
+        maxY = std::max(maxY, y);
+    }
+    if (maxY == minY) maxY += 1.0f;     // evitar división 0
+
+    for (auto& p : particles) {
+
+        // Normalizar (0-1) invertido: 0=arriba, 1=abajo
+        float t = (maxY - p.x.y()) / (maxY - minY);
+
+        // HSV → RGB   (Hue 0-300º)
+        float hue = t * 300.0f;
+        float s = 1.0f, v = 1.0f;
+
+        float c = v * s;
+        float hprime = hue / 60.0f;
+        float x = c * (1.0f - std::fabs(std::fmod(hprime, 2.0f) - 1.0f));
+        float m = v - c;
+
+        float r, g, b;
+        switch (static_cast<int>(hprime) % 6) {
+        case 0: r = c; g = x; b = 0; break;
+        case 1: r = x; g = c; b = 0; break;
+        case 2: r = 0; g = c; b = x; break;
+        case 3: r = 0; g = x; b = c; break;
+        case 4: r = x; g = 0; b = c; break;
+        case 5: r = c; g = 0; b = x; break;
+        default: r = g = b = 0;       break;
+        }
+
+        p.color << std::clamp(r + m, 0.0f, 1.0f),
+            std::clamp(g + m, 0.0f, 1.0f),
+            std::clamp(b + m, 0.0f, 1.0f),
+            1.0f;
     }
 }
 
@@ -164,167 +206,84 @@ void PBF_GPU_System::InitComputeShaders()
     // 1) Integrate
     integrate = ComputeShader("..\\src\\graphics\\compute\\IntegrateAndPredict.comp");
     integrate.use();
-    integrate.setUniform("uDeltaTime",          (float) timeStep);
-    integrate.setUniform("uGravity",            gravity);
+    integrate.setUniform("uDeltaTime", (float)timeStep);
+    integrate.setUniform("uGravity", gravity);
 
     // 2) Assign Cell
     assign = ComputeShader("..\\src\\graphics\\compute\\AssignCells.comp");
     assign.use();
-    assign.setUniform("uGridOrigin",            Eigen::Vector3f( 0.f, 0.f, 0.f));
-    assign.setUniform("uGridResolution",        gridRes, gridRes, gridRes);
-    assign.setUniform("uCellSize",              cellSize);
+    assign.setUniform("uGridOrigin", Eigen::Vector3f(0.f, 0.f, 0.f));
+    assign.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+    assign.setUniform("uCellSize", cellSize);
 
     // 3) Radix Short
     // a) ExtractBit
     rsExtract = ComputeShader("..\\src\\graphics\\compute\\Sort_ExtractBit.comp");
     rsExtract.use();
-    rsExtract.setUniform("uNumElements",        numParticles);
+    rsExtract.setUniform("uNumElements", numParticles);
 
     // b)
-    
+
     rsScan = ComputeShader("..\\src\\graphics\\compute\\Sort_BlockScan.comp");
     rsScan.use();
-    rsScan.setUniform("uNumElements",           numParticles);
+    rsScan.setUniform("uNumElements", numParticles);
 
     // c)
     rsAddOffset = ComputeShader("..\\src\\graphics\\compute\\Sort_AddOffset.comp");
     rsAddOffset.use();
-    rsAddOffset.setUniform("uNumElements",      numParticles);
+    rsAddOffset.setUniform("uNumElements", numParticles);
 
     // d)
     rsReorder = ComputeShader("..\\src\\graphics\\compute\\Sort_Reorder.comp");
     rsReorder.use();
-    rsReorder.setUniform("uNumElements",        numParticles);
-    
+    rsReorder.setUniform("uNumElements", numParticles);
+
     // 4) Find-Cell-Bounds
     findBounds = ComputeShader("..\\src\\graphics\\compute\\FindCellBounds.comp");
     findBounds.use();
-    findBounds.setUniform("uNumElements",       numParticles);
+    findBounds.setUniform("uNumElements", numParticles);
 
     // 5) PBF
     // 5.a - Compute Lambdas
     computeLambda = ComputeShader("..\\src\\graphics\\compute\\ComputeLambda.comp");
     computeLambda.use();
-    computeLambda.setUniform("uNumParticles",   numParticles);
-    computeLambda.setUniform("uRestDensity",    (float) restDensity);
-    computeLambda.setUniform("uRadius",         (float) radius);
-    computeLambda.setUniform("uEpsilon",        (float) epsilon);
+    computeLambda.setUniform("uNumParticles", numParticles);
+    computeLambda.setUniform("uRestDensity", (float)restDensity);
+    computeLambda.setUniform("uRadius", (float)radius);
+    computeLambda.setUniform("uEpsilon", (float)epsilon);
     computeLambda.setUniform("uGridResolution", gridRes, gridRes, gridRes);
 
     // 5.b - Compute DeltaPs
     computeDeltaP = ComputeShader("..\\src\\graphics\\compute\\ComputeDeltaP.comp");
     computeDeltaP.use();
-    computeDeltaP.setUniform("uNumParticles",   numParticles);
-    computeDeltaP.setUniform("uRadius",         (float) radius);
-    computeDeltaP.setUniform("uRestDensity",    (float) restDensity);
-    computeDeltaP.setUniform("uSCorrK",         (float) massPerParticle * 1e-4f);
-    computeDeltaP.setUniform("uSCorrN",         4.0f);
+    computeDeltaP.setUniform("uNumParticles", numParticles);
+    computeDeltaP.setUniform("uRadius", (float)radius);
+    computeDeltaP.setUniform("uRestDensity", (float)restDensity);
+    computeDeltaP.setUniform("uSCorrK", (float)massPerParticle * 1e-4f);
+    computeDeltaP.setUniform("uSCorrN", 4.0f);
     computeDeltaP.setUniform("uGridResolution", gridRes, gridRes, gridRes);
 
     // 5.c - Apply DeltaPs
     applyDeltaP = ComputeShader("..\\src\\graphics\\compute\\ApplyDeltaP.comp");
     applyDeltaP.use();
-    applyDeltaP.setUniform("uNumParticles",     numParticles);
+    applyDeltaP.setUniform("uNumParticles", numParticles);
 
     // 6) Update Velocity
     updateVelocity = ComputeShader("..\\src\\graphics\\compute\\UpdateVelocity.comp");
     updateVelocity.use();
-    updateVelocity.setUniform("uDeltaTime",     (float) timeStep);
-    updateVelocity.setUniform("uDamping",       (float) damping);
+    updateVelocity.setUniform("uDeltaTime", (float)timeStep);
+    updateVelocity.setUniform("uDamping", (float)damping);
+
+    // 9) Resolve Collisions
+    resolveCollisions = ComputeShader("..\\src\\graphics\\compute\\ResolveCollisions.comp");
+    resolveCollisions.use();
+    resolveCollisions.setUniform("uNumParticles", numParticles);
+    resolveCollisions.setUniform("uMinBound", Eigen::Vector3f(-2.0f,  0.0f, -2.0f));
+    resolveCollisions.setUniform("uMaxBound", Eigen::Vector3f( 2.0f, 10.0f,  2.0f));
+    resolveCollisions.setUniform("uRestitution", 0.9f);
 }
 
 void PBF_GPU_System::Step()
-{
-    /*
-    int numGroups = (numParticles + 127) / 128;
-
-    // (1) Integrate & Predict Position
-    glUseProgram(programIntegrate);
-    glUniform1f(glGetUniformLocation(programIntegrate, "uDeltaTime"), timeStep);
-    glUniform3f(glGetUniformLocation(programIntegrate, "uGravity"), 0.0f, -9.81f, 0.0f);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
-    glDispatchCompute(numGroups, 1, 1);
-    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
-    // (2) Assign Particles to Cells
-    glUseProgram(programAssignCells);
-    glUniform3f(glGetUniformLocation(programAssignCells, "uGridOrigin"), -2.0f, -2.0f, -2.0f);
-    glUniform3i(glGetUniformLocation(programAssignCells, "uGridResolution"), 64, 64, 64);
-    glUniform1f(glGetUniformLocation(programAssignCells, "uCellSize"), radius);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellIndices);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIndices);
-    glDispatchCompute(numGroups, 1, 1);
-    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
-    // (3) Radix Sort on GPU
-    GLuint currentKeys = ssboCellIndices;
-    GLuint currentValues = ssboParticleIndices;
-    GLuint tempKeys = ssboKeysOut;
-    GLuint tempValues = ssboValuesOut;
-
-    for (int bit = 0; bit < 32; ++bit)
-    {
-        // a) Extract bit
-        glUseProgram(programExtractBit);
-        glUniform1ui(glGetUniformLocation(programExtractBit, "uBit"), bit);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, currentKeys);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboBitMask);
-        glDispatchCompute(numGroups, 1, 1);
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
-        // b) Prefix sum (scan) on bits
-        glUseProgram(programScan);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboBitMask);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboScan);
-        glDispatchCompute(numGroups, 1, 1);
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
-        // c) Count 1s with atomic
-        GLuint zero = 0;
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboBitCounter);
-        glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GLuint), &zero);
-
-        glUseProgram(programCountOnes);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboBitMask);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, ssboBitCounter);
-        glDispatchCompute(numGroups, 1, 1);
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
-        GLuint totalTrues;
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssboBitCounter);
-        GLuint* ptr = (GLuint*)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GLuint), GL_MAP_READ_BIT);
-        totalTrues = ptr[0];
-        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-
-        GLuint totalFalses = numParticles - totalTrues;
-
-        // d) Reorder keys & values
-        glUseProgram(programReorder);
-        glUniform1ui(glGetUniformLocation(programReorder, "uTotalFalses"), totalFalses);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, currentKeys);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, currentValues);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboBitMask);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssboScan);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, tempKeys);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, tempValues);
-        glDispatchCompute(numGroups, 1, 1);
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
-        std::swap(currentKeys, tempKeys);
-        std::swap(currentValues, tempValues);
-    }
-
-    // Después de esto:
-    // - currentValues → particleIndices ordenados
-    // - currentKeys → cellIndices ordenados
-
-    // (4) TO DO: shader FindCellBounds.comp
-    // Generará ssboCellStart y ssboCellEnd desde currentKeys
-    */
-}
-
-void PBF_GPU_System::Test()
 {
     // 1) Integrate
     integrate.use();
@@ -620,6 +579,15 @@ void PBF_GPU_System::Test()
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
     updateVelocity.dispatch(numWorkGroups);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    // 7 ?
+    // 8 ?
+
+    // 9) Collisions
+    resolveCollisions.use();
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
+    resolveCollisions.dispatch(numWorkGroups);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
 void PBF_GPU_System::Test(int n)
@@ -627,6 +595,6 @@ void PBF_GPU_System::Test(int n)
     for (int i = 0; i < n; ++i)
     {
         std::cout << "Test: " << i + 1 << std::endl;
-        Test();
+        Step();
     }
 }

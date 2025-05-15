@@ -7,16 +7,16 @@
 #include "PBF_GPU_Particle.h"
 #include "../graphics/ComputeShader.h"
 
-#define DEBUG
+//#define DEBUG
 
 class PBF_GPU_System
 {
 private:
 	// Simulation params
-	const GLuint numParticles = 5400 * 10;
+	const GLuint numParticles = 10800;
 	const int numSubSteps = 5;
 	const int numIter = 2;
-	const double timeStep = 1.0 / 90.0;
+	const double timeStep = 1.0 / 144.0;
 	const double radius = 0.10;
 	const double restDensity = 1000.0;
 	const double epsilon = 1e+05;
@@ -72,11 +72,13 @@ private:
 	ComputeShader applyDeltaP;
 	
 	ComputeShader updateVelocity;
+	ComputeShader resolveCollisions;
 
 	const int initStart = INT_MAX;   //  0x7FFFFFFF
 	const int initEnd = -1;
 
 	void InitParticles();
+	void SetParticlesColors();
 	void InitSSBOs();
 	void InitComputeShaders();
 
@@ -86,6 +88,10 @@ public:
 
 	void Init();
 	void Step();
-	void Test();
+	//void Step(float timeStep);
+	//void Test();
 	void Test(int n);
+
+	inline GLuint GetParticlesSSBO() const	{ return ssboParticles; }
+	inline GLuint GetNumParticles() const	{ return numParticles; }
 };

@@ -10,7 +10,7 @@ int main()
     
     //app.TestComputeShader();
     
-    //app.Run();
+    app.Run();
 
     return 0;
 }

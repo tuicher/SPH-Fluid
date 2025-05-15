@@ -1,57 +1,48 @@
 // ResolveCollisions.comp
 #version 460
-layout(local_size_x = 256) in;
+layout(local_size_x = 128) in;
 
 struct Particle {
-    vec4 x;  // posición
-    vec4 v;  // velocidad
-    vec4 p;  // (ya igual a x)
-    vec4 c;  // color
-    vec4 m;  // meta.x = mass
+    vec4 x;
+    vec4 v;
+    vec4 p;
+    vec4 color;
+    vec4 meta;
 };
+layout(std430, binding = 0) buffer ParticlesSSBO { Particle particles[]; };
 
-layout(std430, binding = 0) buffer Particles { Particle part[]; };
-
-layout(location = 0) uniform vec3 uDomainMin;   // e.g. (-0.20, -0.20, -0.20)
-layout(location = 1) uniform vec3 uDomainMax;   // e.g. ( 0.20,  0.20,  0.20)
-layout(location = 2) uniform float uRestitution;// 0.0 = inelástico, 1.0 = elástico
+uniform uint  uNumParticles;
+uniform vec3  uMinBound;        // ej. (-30, 0, -30)
+uniform vec3  uMaxBound;        // ej. ( 30, 8,  30)
+uniform float uRestitution;     // 0.0 = inelástico, 1.0 = elástico
 
 void main()
 {
     uint i = gl_GlobalInvocationID.x;
-    Particle P = part[i];
+    if (i >= uNumParticles) return;
 
-    vec3 x = P.x.xyz;
-    vec3 v = P.v.xyz;
+    vec3 pos = particles[i].x.xyz;
+    vec3 vel = particles[i].v.xyz;
 
-    /* eje X ----------------------------------------------------------*/
-    if (x.x < uDomainMin.x) {
-        x.x  = uDomainMin.x;
-        v.x *= -uRestitution;
-    } else if (x.x > uDomainMax.x) {
-        x.x  = uDomainMax.x;
-        v.x *= -uRestitution;
-    }
+    // --- eje X ----------------------------------------------------------
+    if (pos.x < uMinBound.x) { pos.x = uMinBound.x; vel.x = -vel.x * uRestitution; }
+    else
+    if (pos.x > uMaxBound.x) { pos.x = uMaxBound.x; vel.x = -vel.x * uRestitution; }
 
-    /* eje Y ----------------------------------------------------------*/
-    if (x.y < uDomainMin.y) {
-        x.y  = uDomainMin.y;
-        v.y *= -uRestitution;
-    } else if (x.y > uDomainMax.y) {
-        x.y  = uDomainMax.y;
-        v.y *= -uRestitution;
-    }
+    // --- eje Y ----------------------------------------------------------
+    if (pos.y < uMinBound.y) { pos.y = uMinBound.y; vel.y = -vel.y * uRestitution; }
+    else
+    if (pos.y > uMaxBound.y) { pos.y = uMaxBound.y; vel.y = -vel.y * uRestitution; }
 
-    /* eje Z ----------------------------------------------------------*/
-    if (x.z < uDomainMin.z) {
-        x.z  = uDomainMin.z;
-        v.z *= -uRestitution;
-    } else if (x.z > uDomainMax.z) {
-        x.z  = uDomainMax.z;
-        v.z *= -uRestitution;
-    }
+    // --- eje Z ----------------------------------------------------------
+    if (pos.z < uMinBound.z) { pos.z = uMinBound.z; vel.z = -vel.z * uRestitution; }
+    else
+    if (pos.z > uMaxBound.z) { pos.z = uMaxBound.z; vel.z = -vel.z * uRestitution; }
 
-    P.x.xyz = x;
-    P.v.xyz = v;
-    part[i] = P;
+    /* Guardamos:
+       – x   y p (para que el próximo paso parta de una escena coherente)
+       – v   (ya con rebote)                                               */
+    particles[i].x.xyz = pos;
+    particles[i].p.xyz = pos;
+    particles[i].v.xyz = vel;
 }
