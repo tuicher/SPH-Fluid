@@ -88,6 +88,53 @@ void PBF_GPU_System::SetParticlesColors()
     }
 }
 
+void PBF_GPU_System::UpdateGrid()
+{
+    // 1. Leer posiciones de la GPU (o mantén una copia CPU si ya la tienes)
+    std::vector<PBF_GPU_Particle> cpuBuffer(numParticles);
+    glGetNamedBufferSubData(ssboParticles, 0,
+        sizeof(PBF_GPU_Particle) * numParticles,
+        cpuBuffer.data());
+
+    Eigen::Vector3f minPos(FLT_MAX, FLT_MAX, FLT_MAX);
+    Eigen::Vector3f maxPos(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+    for (const auto& p : cpuBuffer)
+    {
+        minPos = minPos.cwiseMin(p.x.head<3>());
+        maxPos = maxPos.cwiseMax(p.x.head<3>());
+    }
+
+    // 2. Margen = h para que las vecinas quepan
+    float pad = 0.4f;                   // = cellSize
+    Eigen::Vector3f origin = minPos - Eigen::Vector3f::Ones() * pad;
+    Eigen::Vector3f extent = (maxPos - minPos) + 2.0f * Eigen::Vector3f::Ones() * pad;
+
+    // 3. Nº celdas (redondeo hacia arriba)
+    Eigen::Array3i res = (extent / cellSize).array().ceil().cast<int>() + 1;
+
+    // (opcional) Limitar a una potencia de 2 y a un máximo razonable
+    int R = std::min(NextPowerOfTwo(res.maxCoeff()), 128);
+    GLint gridRes = R;
+    GLuint totCells = gridRes * gridRes * gridRes;
+
+    // 4. Si crece más que la reserva inicial, recrea los SSBO [9] y [10]
+    //    (o alócalos desde el principio con ese máximo).
+    if (R > currentGridRes)
+        ResizeCellBuffers(totCells);
+
+    gridOrigin = origin;
+
+    // 5. Subir los uniformes nuevos
+    assign.setUniform("uGridOrigin", origin);
+    assign.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+    computeDensity.setUniform("uGridOrigin", origin);
+    computeDensity.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+    applyViscosity.setUniform("uGridOrigin", origin);
+    applyViscosity.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+
+    currentGridRes = R;
+}
+
 void PBF_GPU_System::InitSSBOs()
 {
     // [0] - SSBO Particles
@@ -199,6 +246,22 @@ void PBF_GPU_System::InitSSBOs()
                         nullptr,
                         GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 12, ssboDeltaP);
+
+    // [13] – Density
+    glCreateBuffers(1, &ssboDensity);
+    glNamedBufferData(  ssboDensity,
+                        sizeof(float)* numParticles,
+                        nullptr,
+                        GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 13, ssboDensity);
+
+    // [14] – DeltaV
+    glCreateBuffers(1, &ssboDeltaV);
+    glNamedBufferData(  ssboDeltaV,
+                        sizeof(Eigen::Vector4f)* numParticles,
+                        nullptr, 
+                        GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 14, ssboDeltaV);
 }
 
 void PBF_GPU_System::InitComputeShaders()
@@ -212,7 +275,7 @@ void PBF_GPU_System::InitComputeShaders()
     // 2) Assign Cell
     assign = ComputeShader("..\\src\\graphics\\compute\\AssignCells.comp");
     assign.use();
-    assign.setUniform("uGridOrigin", Eigen::Vector3f(0.f, 0.f, 0.f));
+    assign.setUniform("uGridOrigin", gridOrigin);
     assign.setUniform("uGridResolution", gridRes, gridRes, gridRes);
     assign.setUniform("uCellSize", cellSize);
 
@@ -274,17 +337,44 @@ void PBF_GPU_System::InitComputeShaders()
     updateVelocity.setUniform("uDeltaTime", (float)timeStep);
     updateVelocity.setUniform("uDamping", (float)damping);
 
+    // 7-a  Density for XSPH
+    computeDensity = ComputeShader("..\\src\\graphics\\compute\\ComputeDensity.comp");
+    computeDensity.use();
+    computeDensity.setUniform("uNumParticles", numParticles);
+    computeDensity.setUniform("uMass", (float)massPerParticle);
+    computeDensity.setUniform("uRadius", (float)radius);
+    computeDensity.setUniform("uGridOrigin", gridOrigin);
+    computeDensity.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+    computeDensity.setUniform("uCellSize", cellSize);
+    computeDensity.setUniform("INT_MAX", initStart);
+
+    // 7-b  Apply viscosity
+    applyViscosity = ComputeShader("..\\src\\graphics\\compute\\ApplyViscosity.comp");
+    applyViscosity.use();
+    applyViscosity.setUniform("uNumParticles", numParticles);
+    applyViscosity.setUniform("uMass", (float)massPerParticle);
+    applyViscosity.setUniform("uRadius", (float)radius);
+    applyViscosity.setUniform("uViscosity", (float)viscosity);
+    applyViscosity.setUniform("uGridOrigin", gridOrigin);
+    applyViscosity.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+    applyViscosity.setUniform("uCellSize", cellSize);
+    applyViscosity.setUniform("INT_MAX", initStart);
+
+    // 8) ?
+
     // 9) Resolve Collisions
     resolveCollisions = ComputeShader("..\\src\\graphics\\compute\\ResolveCollisions.comp");
     resolveCollisions.use();
     resolveCollisions.setUniform("uNumParticles", numParticles);
-    resolveCollisions.setUniform("uMinBound", Eigen::Vector3f(-2.0f,  0.0f, -2.0f));
-    resolveCollisions.setUniform("uMaxBound", Eigen::Vector3f( 2.0f, 10.0f,  2.0f));
-    resolveCollisions.setUniform("uRestitution", 0.9f);
+    resolveCollisions.setUniform("uMinBound", Eigen::Vector3f( -2.f,  0.0f, -2.f));
+    resolveCollisions.setUniform("uMaxBound", Eigen::Vector3f(  2.f, 10.0f,  2.f));
+    resolveCollisions.setUniform("uRestitution", 0.8f);
 }
 
 void PBF_GPU_System::Step()
 {
+    //UpdateGrid();
+
     // 1) Integrate
     integrate.use();
     integrate.dispatch(numWorkGroups);
@@ -580,7 +670,29 @@ void PBF_GPU_System::Step()
     updateVelocity.dispatch(numWorkGroups);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-    // 7 ?
+    // 7-a) Compute densities for XSPH
+    computeDensity.use();
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellKey);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIdx);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, ssboCellStart);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, ssboCellEnd);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 13, ssboDensity);
+    computeDensity.dispatch(numWorkGroups);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    // 7-b) Apply viscosity
+    applyViscosity.use();
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellKey);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIdx);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, ssboCellStart);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, ssboCellEnd);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 13, ssboDensity);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 14, ssboDeltaV);
+    applyViscosity.dispatch(numWorkGroups);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
     // 8 ?
 
     // 9) Collisions
@@ -598,3 +710,29 @@ void PBF_GPU_System::Test(int n)
         Step();
     }
 }
+
+void PBF_GPU_System::ResizeCellBuffers(GLuint newTotCells)
+{
+    // Libera los SSBO antiguos
+    glDeleteBuffers(1, &ssboCellStart);
+    glDeleteBuffers(1, &ssboCellEnd);
+
+    // Crea otros nuevos con el tamaño solicitado
+    std::vector<int> initStart(newTotCells, INT_MAX);
+    std::vector<int> initEnd(newTotCells, -1);
+
+    glCreateBuffers(1, &ssboCellStart);
+    glNamedBufferData(ssboCellStart,
+        sizeof(int) * newTotCells,
+        initStart.data(),
+        GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, ssboCellStart);
+
+    glCreateBuffers(1, &ssboCellEnd);
+    glNamedBufferData(ssboCellEnd,
+        sizeof(int) * newTotCells,
+        initEnd.data(),
+        GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, ssboCellEnd);
+}
+

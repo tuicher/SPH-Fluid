@@ -176,7 +176,8 @@ void Renderer::Run()
             m_Camera.SetRotation(Eigen::Vector2f(newXRot, newYRot));
         }
         
-        m_PBFGPU_System.Step();
+        if (enableSimulation)
+            m_PBFGPU_System.Step();
 
         //glEnable(GL_BLEND);
         //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

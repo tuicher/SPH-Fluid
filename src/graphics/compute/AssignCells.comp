@@ -43,7 +43,7 @@ void main()
     cellCoord = clamp(cellCoord, ivec3(0), uGridResolution - 1);
 
     // TODO -> % ivec3?
-    // cellCoord = cellCoord % uGridResolution;
+    //cellCoord = cellCoord % uGridResolution;
 
     // TODO 2 -> Hash by Z-index curvs
 
