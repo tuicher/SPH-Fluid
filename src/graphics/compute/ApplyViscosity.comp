@@ -74,5 +74,6 @@ void main()
     vec3 dV = uViscosity * sum;
 
     particles[id].v.xyz += dV;   // aplicar
+    particles[id].meta.z = dV.x + dV.y + dV.z;
     dVel[id] = vec4(dV, 0.0);    // opcional para depuración
 }
