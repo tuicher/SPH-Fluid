@@ -177,7 +177,10 @@ void Renderer::Run()
         }
         
         if (enableSimulation)
+        {
             m_PBFGPU_System.Step();
+        }
+            
 
         //glEnable(GL_BLEND);
         //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
