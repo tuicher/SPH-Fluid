@@ -42,6 +42,7 @@ public:
     void setUniform(const std::string& name, float value);
     void setUniform(const std::string& name, float x, float y, float z);
     void setUniform(const std::string& name, int   x, int   y, int   z);
+    void setUniform(const std::string& name, const Eigen::Array3i& iv);
     void setUniform(const std::string& name, const Eigen::Vector3f& v);
 
     GLuint id() const { return programID_; }

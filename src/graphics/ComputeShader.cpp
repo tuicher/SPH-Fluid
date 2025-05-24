@@ -25,6 +25,11 @@ void ComputeShader::setUniform(const std::string& name, int x, int y, int z)
     glUniform3i(getUniformLocation(name), x, y, z);
 }
 
+void ComputeShader::setUniform(const std::string& name, const Eigen::Array3i& iv)
+{
+    this->setUniform(name, iv.x(), iv.y(), iv.z());
+}
+
 void ComputeShader::setUniform(const std::string& name, const Eigen::Vector3f& v)
 {
     glUniform3f(getUniformLocation(name), v.x(), v.y(), v.z());
