@@ -40,10 +40,13 @@ void main()
     ivec3 cellCoord = ivec3(floor(relative));
 
     // Clamping dentro de la rejilla
-    cellCoord = clamp(cellCoord, ivec3(0), uGridResolution - 1);
+    //cellCoord = clamp(cellCoord, ivec3(0), uGridResolution - 1);
+
+    //if (any(lessThan(cellCoord, ivec3(0))) || any(greaterThanEqual(cellCoord, uGridResolution)))
+    //return; 
 
     // TODO -> % ivec3?
-    //cellCoord = cellCoord % uGridResolution;
+    cellCoord = cellCoord % uGridResolution;
 
     // TODO 2 -> Hash by Z-index curvs
 

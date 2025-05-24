@@ -105,34 +105,38 @@ void PBF_GPU_System::UpdateGrid()
     }
 
     // 2. Margen = h para que las vecinas quepan
-    float pad = 0.4f;                   // = cellSize
+    float pad = cellSize;
     Eigen::Vector3f origin = minPos - Eigen::Vector3f::Ones() * pad;
     Eigen::Vector3f extent = (maxPos - minPos) + 2.0f * Eigen::Vector3f::Ones() * pad;
 
-    // 3. Nº celdas (redondeo hacia arriba)
-    Eigen::Array3i res = (extent / cellSize).array().ceil().cast<int>() + 1;
+    // 3. Nº celdas (ceil) + 1
+    Eigen::Array3i res = ((extent / cellSize).array()).ceil().cast<int>() + 1;
+    gridRes = res;
+    GLuint totCells = gridRes.prod();
 
-    // (opcional) Limitar a una potencia de 2 y a un máximo razonable
-    int R = std::min(NextPowerOfTwo(res.maxCoeff()), 128);
-    GLint gridRes = R;
-    GLuint totCells = gridRes * gridRes * gridRes;
-
-    // 4. Si crece más que la reserva inicial, recrea los SSBO [9] y [10]
-    //    (o alócalos desde el principio con ese máximo).
-    if (R > currentGridRes)
+    // 4. Asegura que los buffers tienen tamaño suficiente
+    if (totCells > currentTotCells)
+    {
         ResizeCellBuffers(totCells);
+        currentTotCells = totCells;
+    }
 
     gridOrigin = origin;
 
-    // 5. Subir los uniformes nuevos
-    assign.setUniform("uGridOrigin", origin);
-    assign.setUniform("uGridResolution", gridRes, gridRes, gridRes);
-    computeDensity.setUniform("uGridOrigin", origin);
-    computeDensity.setUniform("uGridResolution", gridRes, gridRes, gridRes);
-    applyViscosity.setUniform("uGridOrigin", origin);
-    applyViscosity.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+    // 5. Sube uniforms a TODOS los kernels implicados
+    auto pushGrid = [&](ComputeShader& cs)
+        {
+            cs.use();
+            cs.setUniform("uGridOrigin", gridOrigin);
+            cs.setUniform("uGridResolution", gridRes);
+            cs.setUniform("uCellSize", cellSize);
+        };
 
-    currentGridRes = R;
+    pushGrid(assign);
+    pushGrid(computeLambda);
+    pushGrid(computeDeltaP);
+    pushGrid(computeDensity);
+    pushGrid(applyViscosity);
 }
 
 void PBF_GPU_System::InitSSBOs()
@@ -276,7 +280,7 @@ void PBF_GPU_System::InitComputeShaders()
     assign = ComputeShader("..\\src\\graphics\\compute\\AssignCells.comp");
     assign.use();
     assign.setUniform("uGridOrigin", gridOrigin);
-    assign.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+    assign.setUniform("uGridResolution", gridRes);
     assign.setUniform("uCellSize", cellSize);
 
     // 3) Radix Short
@@ -314,7 +318,7 @@ void PBF_GPU_System::InitComputeShaders()
     computeLambda.setUniform("uRestDensity", (float)restDensity);
     computeLambda.setUniform("uRadius", (float)radius);
     computeLambda.setUniform("uEpsilon", (float)epsilon);
-    computeLambda.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+    computeLambda.setUniform("uGridResolution", gridRes);
 
     // 5.b - Compute DeltaPs
     computeDeltaP = ComputeShader("..\\src\\graphics\\compute\\ComputeDeltaP.comp");
@@ -324,7 +328,7 @@ void PBF_GPU_System::InitComputeShaders()
     computeDeltaP.setUniform("uRestDensity", (float)restDensity);
     computeDeltaP.setUniform("uSCorrK", (float)massPerParticle * 1e-4f);
     computeDeltaP.setUniform("uSCorrN", 4.0f);
-    computeDeltaP.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+    computeDeltaP.setUniform("uGridResolution", gridRes);
 
     // 5.c - Apply DeltaPs
     applyDeltaP = ComputeShader("..\\src\\graphics\\compute\\ApplyDeltaP.comp");
@@ -344,7 +348,7 @@ void PBF_GPU_System::InitComputeShaders()
     computeDensity.setUniform("uMass", (float)massPerParticle);
     computeDensity.setUniform("uRadius", (float)radius);
     computeDensity.setUniform("uGridOrigin", gridOrigin);
-    computeDensity.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+    computeDensity.setUniform("uGridResolution", gridRes);
     computeDensity.setUniform("uCellSize", cellSize);
     computeDensity.setUniform("INT_MAX", initStart);
 
@@ -356,7 +360,7 @@ void PBF_GPU_System::InitComputeShaders()
     applyViscosity.setUniform("uRadius", (float)radius);
     applyViscosity.setUniform("uViscosity", (float)viscosity);
     applyViscosity.setUniform("uGridOrigin", gridOrigin);
-    applyViscosity.setUniform("uGridResolution", gridRes, gridRes, gridRes);
+    applyViscosity.setUniform("uGridResolution", gridRes);
     applyViscosity.setUniform("uCellSize", cellSize);
     applyViscosity.setUniform("INT_MAX", initStart);
 
@@ -373,15 +377,28 @@ void PBF_GPU_System::InitComputeShaders()
 
 void PBF_GPU_System::Step()
 {
-    //UpdateGrid();
+    for (int i = 0; i < numSubSteps; i++)
+    {
+        Step(subTimeStep);
+    }
+}
+
+void PBF_GPU_System::Step(float dt)
+{
+    UpdateGrid();
 
     // 1) Integrate
     integrate.use();
+    integrate.setUniform("uDeltaTime", dt);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
     integrate.dispatch(numWorkGroups);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
     // 2) Hash
     assign.use();
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellKey);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIdx);
     assign.dispatch(numWorkGroups);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
@@ -392,12 +409,17 @@ void PBF_GPU_System::Step()
         rsExtract.use();
         rsExtract.setUniform("uBit", bit);
         rsExtract.setUniform("uNumElements", numParticles);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellKey);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssboBits);
         rsExtract.dispatch(numWorkGroups);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
         // b) BlockScan
         rsScan.use();
         rsScan.setUniform("uNumElements", numParticles);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssboBits);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssboScan);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssboSums);
         rsScan.dispatch(numWorkGroups);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
@@ -422,6 +444,8 @@ void PBF_GPU_System::Step()
         // d) addOffset
         rsAddOffset.use();
         rsAddOffset.setUniform("uNumElements", numParticles);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssboScan);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, ssboOffsets);
         rsAddOffset.dispatch(numWorkGroups);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 #ifdef DEBUG
@@ -461,6 +485,12 @@ void PBF_GPU_System::Step()
         rsReorder.use();
         rsReorder.setUniform("uNumElements", numParticles);
         rsReorder.setUniform("uTotalFalses", numParticles - numOnes);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellKey);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIdx);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssboBits);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssboScan);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, ssboKeysTmp);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, ssboValsTmp);
         rsReorder.dispatch(numWorkGroups);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
@@ -556,18 +586,21 @@ void PBF_GPU_System::Step()
 #endif // DEBUG 
 
     // 5) PBF Steps
-    // 5.a Compute Lambdas
-    computeLambda.use();
     
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellKey);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIdx);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, ssboCellStart);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, ssboCellEnd);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 11, ssboLambda);
+    for (int it = 0; it < numIter; ++it)
+    {
+        // 5.a Compute Lambdas
+        computeLambda.use();
+    
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellKey);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIdx);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, ssboCellStart);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, ssboCellEnd);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 11, ssboLambda);
 
-    computeLambda.dispatch(numWorkGroups);
-    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        computeLambda.dispatch(numWorkGroups);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
     
 #ifdef DEBUG
     constexpr GLuint kPrint = 16;
@@ -578,19 +611,19 @@ void PBF_GPU_System::Step()
     for (auto v : lambda) std::cout << v << '\n';
 #endif // DEBUG
 
-    // 5.b Compute DeltaPs
-    computeDeltaP.use();
+        // 5.b Compute DeltaPs
+        computeDeltaP.use();
 
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellKey);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIdx);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, ssboCellStart);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, ssboCellEnd);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 11, ssboLambda);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 12, ssboDeltaP);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssboCellKey);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssboParticleIdx);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, ssboCellStart);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, ssboCellEnd);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 11, ssboLambda);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 12, ssboDeltaP);
 
-    computeDeltaP.dispatch(numWorkGroups);
-    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        computeDeltaP.dispatch(numWorkGroups);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
 #ifdef DEBUG  
     std::array<Eigen::Vector4f, kPrint> dp{};
@@ -604,10 +637,10 @@ void PBF_GPU_System::Step()
     std::cout << '\n';
 #endif // DEBUG
 
-    // 5.c Apply DeltaPs
-    applyDeltaP.use();
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 12, ssboDeltaP);
+        // 5.c Apply DeltaPs
+        applyDeltaP.use();
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 12, ssboDeltaP);
 
 #ifdef DEBUG  
     std::vector<PBF_GPU_Particle> before(numParticles);
@@ -624,9 +657,9 @@ void PBF_GPU_System::Step()
         deltaP.data());
 #endif // DEBUG
 
-    applyDeltaP.dispatch(numWorkGroups);
-    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-    
+        applyDeltaP.dispatch(numWorkGroups);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    }
 #ifdef DEBUG 
     // Copy Post Values
     std::vector<PBF_GPU_Particle> after(numParticles);
@@ -666,6 +699,7 @@ void PBF_GPU_System::Step()
 
     // 6 Update Velocity
     updateVelocity.use();
+    updateVelocity.setUniform("uDeltaTime", dt);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
     updateVelocity.dispatch(numWorkGroups);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);

@@ -9,33 +9,35 @@
 #include "PBF_GPU_Particle.h"
 #include "../graphics/ComputeShader.h"
 
-#define DEBUG
+//#define DEBUG
 
 class PBF_GPU_System
 {
 private:
 	// Simulation params
 	const GLuint numParticles = 18'000;
-	const int numSubSteps = 5;
+	const int numSubSteps = 4;
 	const int numIter = 2;
-	const double timeStep = 1.0 / 144.0;
-	const double radius = 0.40;
+	const float timeStep = 1.0f / 90.0f;
+	const float subTimeStep = timeStep / numSubSteps;
+	const double radius = 0.75;
 	const double restDensity = 1000.0;
-	const double epsilon = 1e+05;
+	const double epsilon = 1e05;
 	const double damping = 0.999;
 	const double viscosity = 0.050;
 	const double totalMass = 3000.0;
 	const double massPerParticle = totalMass / numParticles;
 	const Eigen::Vector3f gravity = Eigen::Vector3f(0, -9.81f, 0);
-	//Eigen::Vector3f gridOrigin = Eigen::Vector3f(-2.4f, -0.4f, -2.4f);
-	Eigen::Vector3f gridOrigin = Eigen::Vector3f::Zero();
+	//Eigen::Vector3f gridOrigin = Eigen::Vector3f(-30.0f, 0.f, -30.0f);
+	Eigen::Vector3f gridOrigin = Eigen::Vector3f( 0.f, 5.f, 0.f);
+	//Eigen::Vector3f gridOrigin = Eigen::Vector3f::Zero();
 	
 	// Kernels Consts
 	const GLuint workGroup = 128;
 	const GLuint numWorkGroups = (numParticles + workGroup - 1) / workGroup;
-	const GLint gridRes = 64;
-	const GLuint totCells = gridRes * gridRes * gridRes;
-	const float cellSize = 0.4f;
+	Eigen::Array3i gridRes;
+	GLuint totCells = gridRes.prod();
+	const float cellSize = 0.75f;
 	
 	const bool verbose = false;
 
@@ -98,13 +100,13 @@ public:
 	PBF_GPU_System();
 	~PBF_GPU_System();
 
-	int currentGridRes = gridRes;
-
 	void Init();
 	void Step();
-	//void Step(float timeStep);
+	void Step(float timeStep);
 	//void Test();
 	void Test(int n);
+
+	int currentTotCells = totCells;
 
 	void ResizeCellBuffers(GLuint newTotCells);
 
