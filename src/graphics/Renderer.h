@@ -59,7 +59,7 @@ private:
 
     double ox, oy;
     float xRotLength, yRotLength;
-    int buttonState;
+    int buttonState = 0;
 
     bool enableSimulation = false;
 

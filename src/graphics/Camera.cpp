@@ -11,7 +11,7 @@ Camera::Camera()
     , m_FOV(45.0f)
     , m_AspectRatio(1.3333f)
     , m_NearPlane(0.1f)
-    , m_FarPlane(20.0f)
+    , m_FarPlane(200.0f)
 {
     UpdateViewMatrix();
     UpdateProjectionMatrix();

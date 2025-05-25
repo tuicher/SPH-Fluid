@@ -15,10 +15,11 @@ class PBF_GPU_System
 {
 private:
 	// Simulation params
-	const GLuint numParticles = 50'000;
-	const int numSubSteps = 4;
-	const int numIter = 2;
-	const float timeStep = 1.0f / 70.0f;
+	const GLuint numParticles = 51'200;
+	const int numRelaxSteps = 50;
+	const int numSubSteps = 5;
+	const int numIter = 3;
+	const float timeStep = 1.0f / 72.f;
 	const float subTimeStep = timeStep / numSubSteps;
 	const double radius = 0.1;
 	const double restDensity = 1000.0;
@@ -39,8 +40,8 @@ private:
 	GLuint totCells = gridRes.prod();
 	const float cellSize = 0.1f;
 	
-	const Eigen::Vector3f MinBound = Eigen::Vector3f(-2.f, 0.0f, -2.f);
-	const Eigen::Vector3f MaxBound = Eigen::Vector3f(2.f, 10.0f, 2.f);
+	const Eigen::Vector3f MinBound = Eigen::Vector3f(-1.0f, 0.0f, -1.0f);
+	const Eigen::Vector3f MaxBound = Eigen::Vector3f( 1.0f, 10.0f, 1.0f);
 	
 	const bool verbose = false;
 
@@ -89,6 +90,8 @@ private:
 	ComputeShader computeDensity;
 	ComputeShader applyViscosity;
 
+	ComputeShader resetVelocity;
+
 	const int initStart = INT_MAX;   //  0x7FFFFFFF
 	const int initEnd = -1;
 
@@ -96,6 +99,7 @@ private:
 	void SetParticlesColors();
 	void InitSSBOs();
 	void InitComputeShaders();
+	void InitSimulation();
 
 	void UpdateGrid();
 

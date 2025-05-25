@@ -8,7 +8,28 @@ PBF_GPU_System::PBF_GPU_System()
 
 PBF_GPU_System::~PBF_GPU_System()
 {
-    // TODO
+    auto del = [](GLuint& id)
+        {
+            if (id != 0)
+                glDeleteBuffers(1, &id);
+            id = 0;
+        };
+
+    del(ssboParticles);
+    del(ssboCellKey);
+    del(ssboParticleIdx);
+    del(ssboBits);
+    del(ssboScan);
+    del(ssboSums);
+    del(ssboOffsets);
+    del(ssboKeysTmp);
+    del(ssboValsTmp);
+    del(ssboCellStart);
+    del(ssboCellEnd);
+    del(ssboLambda);
+    del(ssboDeltaP);
+    del(ssboDensity);
+    del(ssboDeltaV);
 }
 
 void PBF_GPU_System::Init()
@@ -17,13 +38,14 @@ void PBF_GPU_System::Init()
     SetParticlesColors();
     InitSSBOs();
     InitComputeShaders();
+    InitSimulation();
 }
 
 void PBF_GPU_System::InitParticles()
 {
     particles = std::vector<PBF_GPU_Particle>(numParticles);
     Eigen::Vector3f scale{ 0.5f, 2.0f, 0.5f };
-    Eigen::Vector3f offset{ 0.0f, 4.0f, 0.0f };
+    Eigen::Vector3f offset{ 0.0f, 6.0f, 0.0f };
 
     std::cout << "numParticles: " << numParticles << std::endl;
     std::cout << "Mass: " << massPerParticle << std::endl;
@@ -33,13 +55,19 @@ void PBF_GPU_System::InitParticles()
     for (int i = 0; i < numParticles; ++i)
     {
         Eigen::Vector3f p = scale.cwiseProduct(Eigen::Vector3f::Random()) + offset;
+        
+        // Genera posiciones dentro de una esfera de radio centrada en (0, 5, 0)
+        //Eigen::Vector3f p = Eigen::Vector3f::Random().normalized();
+        //p *= 0.05f;
+        //p = p + Eigen::Vector3f(0.0f, 5.0f, 0.0f);
 
         auto& P = particles[i];
         P.x << p, 1.f;
 
         P.v.setZero();
         P.p = P.x;
-        P.color = Eigen::Vector4f::Random();
+        P.color = Eigen::Vector4f( 0.016f, 0.0f, 0.639f, 1.0f);
+        //P.color = Eigen::Vector4f::Random();
         P.meta << massPerParticle, float(k), 0, 0;
     }
 }
@@ -86,6 +114,21 @@ void PBF_GPU_System::SetParticlesColors()
             std::clamp(b + m, 0.0f, 1.0f),
             1.0f;
     }
+}
+
+void PBF_GPU_System::InitSimulation()
+{
+    for (int i = 0; i < numRelaxSteps; i++)
+        Step(timeStep / numRelaxSteps);
+    
+
+    resetVelocity.use();
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
+
+    resetVelocity.dispatch(numWorkGroups);
+
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
 }
 
 void PBF_GPU_System::UpdateGrid()
@@ -372,7 +415,11 @@ void PBF_GPU_System::InitComputeShaders()
     resolveCollisions.setUniform("uNumParticles", numParticles);
     resolveCollisions.setUniform("uMinBound", MinBound);
     resolveCollisions.setUniform("uMaxBound", MaxBound);
-    resolveCollisions.setUniform("uRestitution", 0.8f);
+    resolveCollisions.setUniform("uRestitution", 0.95f);
+
+    resetVelocity = ComputeShader("..\\src\\graphics\\compute\\ResetVelocities.comp");
+    resetVelocity.use();
+    resetVelocity.setUniform("uNumParticles", numParticles);
 }
 
 void PBF_GPU_System::Step()

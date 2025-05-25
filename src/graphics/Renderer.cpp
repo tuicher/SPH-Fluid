@@ -137,7 +137,7 @@ void Renderer::InitScene()
     m_Cube = std::make_unique<Cube>();
     m_Cube->Setup();
 
-    m_Sphere = std::make_unique<Sphere>(0.025f, 3, 3);
+    m_Sphere = std::make_unique<Sphere>(0.025f, 16, 32);
     m_Sphere->Setup();
 
 }
@@ -204,7 +204,7 @@ void Renderer::Run()
                                 nullptr,
                                 nInst);
 
-       // glDepthMask(GL_TRUE);
+        //glDepthMask(GL_TRUE);
         //glDisable(GL_BLEND);
 
         m_ImGuiLayer.EndFrame();
