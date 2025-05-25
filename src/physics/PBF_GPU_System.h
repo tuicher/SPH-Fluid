@@ -15,12 +15,12 @@ class PBF_GPU_System
 {
 private:
 	// Simulation params
-	const GLuint numParticles = 18'000;
+	const GLuint numParticles = 50'000;
 	const int numSubSteps = 4;
 	const int numIter = 2;
-	const float timeStep = 1.0f / 90.0f;
+	const float timeStep = 1.0f / 70.0f;
 	const float subTimeStep = timeStep / numSubSteps;
-	const double radius = 0.75;
+	const double radius = 0.1;
 	const double restDensity = 1000.0;
 	const double epsilon = 1e05;
 	const double damping = 0.999;
@@ -35,9 +35,12 @@ private:
 	// Kernels Consts
 	const GLuint workGroup = 128;
 	const GLuint numWorkGroups = (numParticles + workGroup - 1) / workGroup;
-	Eigen::Array3i gridRes;
+	Eigen::Array3i gridRes = Eigen::Array3i(600,80,600);
 	GLuint totCells = gridRes.prod();
-	const float cellSize = 0.75f;
+	const float cellSize = 0.1f;
+	
+	const Eigen::Vector3f MinBound = Eigen::Vector3f(-2.f, 0.0f, -2.f);
+	const Eigen::Vector3f MaxBound = Eigen::Vector3f(2.f, 10.0f, 2.f);
 	
 	const bool verbose = false;
 

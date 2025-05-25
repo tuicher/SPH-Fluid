@@ -25,7 +25,7 @@ uniform float uCellSize;
 uniform int INT_MAX;
 
 const float PI = 3.1415926535;
-float W_poly6(float r2, float h) {              // igual que antes
+float W_poly6(float r2, float h) { 
     float h2 = h*h;
     float diff = h2 - r2;
     return (diff <= 0.0) ? 0.0
@@ -75,5 +75,5 @@ void main()
 
     particles[id].v.xyz += dV;   // aplicar
     particles[id].meta.z = dV.x + dV.y + dV.z;
-    dVel[id] = vec4(dV, 0.0);    // opcional para depuración
+    //dVel[id] = vec4(dV, 0.0);    // opcional para depuración
 }

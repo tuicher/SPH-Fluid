@@ -30,7 +30,7 @@ void main()
 
     vNormal  = normalize(aPos);
     vViewDir = normalize( (inverse(uView) * vec4(0,0,0,1)).xyz - worldPos );
-    //vColor   = particles[id].color;
-    float val = particles[id].meta.z;
-    vColor   = vec4(val,val,val,1);
+    vColor   = particles[id].color;
+    //float val = particles[id].meta.z;
+    //vColor   = vec4(val,val,val,1);
 }

@@ -370,8 +370,8 @@ void PBF_GPU_System::InitComputeShaders()
     resolveCollisions = ComputeShader("..\\src\\graphics\\compute\\ResolveCollisions.comp");
     resolveCollisions.use();
     resolveCollisions.setUniform("uNumParticles", numParticles);
-    resolveCollisions.setUniform("uMinBound", Eigen::Vector3f( -2.f,  0.0f, -2.f));
-    resolveCollisions.setUniform("uMaxBound", Eigen::Vector3f(  2.f, 10.0f,  2.f));
+    resolveCollisions.setUniform("uMinBound", MinBound);
+    resolveCollisions.setUniform("uMaxBound", MaxBound);
     resolveCollisions.setUniform("uRestitution", 0.8f);
 }
 
