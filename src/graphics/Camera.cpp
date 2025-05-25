@@ -3,17 +3,15 @@
 
 #include "../support/Common.h"
 
-
-
 Camera::Camera()
-    : m_Position(0.0f, 1.0f, 8.0f)
+    : m_Position(0.0f, 1.0f, 10.0f)
     , m_Rotation(15.0f, 0.0f)
     , m_Up(0.0f, 1.0f, 0.0f)
     , m_Target(0.0f, 0.0f, 0.0f)
     , m_FOV(45.0f)
     , m_AspectRatio(1.3333f)
     , m_NearPlane(0.1f)
-    , m_FarPlane(20.0f)
+    , m_FarPlane(200.0f)
 {
     UpdateViewMatrix();
     UpdateProjectionMatrix();

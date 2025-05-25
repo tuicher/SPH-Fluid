@@ -25,6 +25,14 @@ public:
     void SetColor(const Eigen::Vector3f& color) { m_Color = color; }
     const Eigen::Vector3f& GetColor() const { return m_Color; }
 
+    inline GLuint GetVAO() { return m_VAO; }
+    inline GLuint GetVBO() { return m_VBO; }
+    inline GLuint GetEBO() { return m_EBO; }
+
+    inline GLuint GetNumVertex() { return m_Vertices.size(); }
+    inline GLuint GetNumNormals() { return m_Normals.size(); }
+    inline GLuint GetNumIndex() { return m_Indices.size(); }
+
 protected:
     Mesh();  // protected para que sólo se instancie derivando
 

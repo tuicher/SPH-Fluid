@@ -10,15 +10,19 @@
 #include <vector>
 #include <iostream>
 #include <memory>
+#include <numeric>
 
 #include "Camera.h"
 #include "Shader.h"
+#include "ComputeShader.h"
+#include "../support/Loader.h"
 #include "../support/AppInfo.h"
 #include "../support/ImGuiLayer.h"
 #include "../geometry/Cube.h"
 #include "../geometry/Sphere.h"
-#include "../physics/SPH_System.h"
-#include "../physics/PBF_System.h"
+//#include "../physics/SPH_System.h"
+//#include "../physics/PBF_System.h"
+#include "../physics/PBF_GPU_System.h"
 
 // DEFINES
 #define D_TRANSLATION 0.2f
@@ -30,6 +34,8 @@ public:
     ~Renderer();
 
     void Run();
+
+    void TestComputeShader();
 
 private:
     bool InitGLFW(int width, int height, const char* title);
@@ -53,7 +59,7 @@ private:
 
     double ox, oy;
     float xRotLength, yRotLength;
-    int buttonState;
+    int buttonState = 0;
 
     bool enableSimulation = false;
 
@@ -80,9 +86,15 @@ private:
 
 
     // SPH_Implementation
-    SPH_System m_SPHSystem;
+    //SPH_System m_SPHSystem;
     
 
     // PBF_Implementation
-    PBF_System m_PBFSystem;
+    //PBF_System m_PBFSystem;
+
+    // GPU_PBF_Implementation
+    PBF_GPU_System m_PBFGPU_System;
+
+    GLuint m_ComputeProgram;
+    GLuint m_SSBO;
 };

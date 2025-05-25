@@ -3,6 +3,9 @@
 #include <string>
 #include <glad/glad.h>
 #include <Eigen/Core>
+#include <iostream>
+
+#include "../support/Loader.h"
 
 class Shader
 {

@@ -1,7 +1,5 @@
 // Shader.cpp
 #include "Shader.h"
-#include "../support/Loader.h"
-#include <iostream>
 
 Shader::~Shader()
 {

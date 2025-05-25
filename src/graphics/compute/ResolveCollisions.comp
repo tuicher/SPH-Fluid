@@ -1,0 +1,48 @@
+// ResolveCollisions.comp
+#version 460
+layout(local_size_x = 128) in;
+
+struct Particle {
+    vec4 x;
+    vec4 v;
+    vec4 p;
+    vec4 color;
+    vec4 meta;
+};
+layout(std430, binding = 0) buffer ParticlesSSBO { Particle particles[]; };
+
+uniform uint  uNumParticles;
+uniform vec3  uMinBound;        // ej. (-30, 0, -30)
+uniform vec3  uMaxBound;        // ej. ( 30, 8,  30)
+uniform float uRestitution;     // 0.0 = inelástico, 1.0 = elástico
+
+void main()
+{
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= uNumParticles) return;
+
+    vec3 pos = particles[i].x.xyz;
+    vec3 vel = particles[i].v.xyz;
+
+    // --- eje X ----------------------------------------------------------
+    if (pos.x < uMinBound.x) { pos.x = uMinBound.x; vel.x = -vel.x * uRestitution; }
+    else
+    if (pos.x > uMaxBound.x) { pos.x = uMaxBound.x; vel.x = -vel.x * uRestitution; }
+
+    // --- eje Y ----------------------------------------------------------
+    if (pos.y < uMinBound.y) { pos.y = uMinBound.y; vel.y = -vel.y * uRestitution; }
+    else
+    if (pos.y > uMaxBound.y) { pos.y = uMaxBound.y; vel.y = -vel.y * uRestitution; }
+
+    // --- eje Z ----------------------------------------------------------
+    if (pos.z < uMinBound.z) { pos.z = uMinBound.z; vel.z = -vel.z * uRestitution; }
+    else
+    if (pos.z > uMaxBound.z) { pos.z = uMaxBound.z; vel.z = -vel.z * uRestitution; }
+
+    /* Guardamos:
+       – x   y p (para que el próximo paso parta de una escena coherente)
+       – v   (ya con rebote)                                               */
+    particles[i].x.xyz = pos;
+    particles[i].p.xyz = pos;
+    particles[i].v.xyz = vel;
+}

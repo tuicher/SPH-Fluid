@@ -1,0 +1,106 @@
+// ComputeDeltaP.comp
+#version 460
+layout(local_size_x = 128) in;
+
+struct Particle { vec4 x; vec4 v; vec4 p; vec4 color; vec4 meta; };
+
+layout(std430, binding = 0) readonly buffer Particles       { Particle P[];      };
+layout(std430, binding = 1) readonly buffer CellKeys        { uint    key[];     };
+layout(std430, binding = 2) readonly buffer ParticleIdx     { uint    idx[];     };
+layout(std430, binding = 11) readonly buffer Lambdas        { float   lambda[];  };
+layout(std430, binding = 12)          buffer DeltaP         { vec4    dP[];      };
+layout(std430, binding = 9) readonly buffer CellStart       { int     cStart[];  };
+layout(std430, binding = 10) readonly buffer CellEnd        { int     cEnd[];    };
+
+uniform uint   uNumParticles;
+uniform float  uRadius;
+uniform float  uRestDensity;
+uniform float  uSCorrK;
+uniform float  uSCorrN;
+uniform ivec3  uGridResolution;
+
+const float PI = 3.14159265359;
+const int CELL_EMPTY = 2147483647; 
+const float q  = 0.3;                   // s_corr
+
+float poly6(float r2, float h){
+    float h2 = h*h;
+    float diff = h2 - r2;
+    if(diff<=0.0) return 0.0;
+    return (315.0/(64.0*PI*pow(h,9.0))) * diff*diff*diff;
+}
+
+vec3 gradSpiky(vec3 r, float h){
+    float len = length(r);
+    if(len==0.0 || len>=h) return vec3(0);
+    float coeff = -45.0/(PI*pow(h,6.0));
+    float diff = h - len;
+    return coeff*diff*diff * (r/len);
+}
+
+uvec3 decode(uint k){
+    uint xy = uGridResolution.x * uGridResolution.y;
+    uint z  = k / xy;
+    uint y  = (k - z*xy) / uGridResolution.x;
+    uint x  = k - z*xy - y*uint(uGridResolution.x);
+    return uvec3(x,y,z);
+}
+uint encode(ivec3 c){
+    return uint(c.x + c.y*uGridResolution.x + c.z*uGridResolution.x*uGridResolution.y);
+}
+
+void main()
+{
+    if (uGridResolution.x == 0) {
+    // Grid no inicializado → aborta para evitar lecturas fuera de rango
+    return;
+    }
+
+    uint s = gl_GlobalInvocationID.x;
+    if (s >= uNumParticles) return;
+
+    uint i   = idx[s];
+    vec3 pi  = P[i].p.xyz;
+    float li = lambda[i];
+    vec3 dPi = vec3(0);
+
+    float w_q = poly6(q*q*uRadius*uRadius,uRadius);
+
+    ivec3 cell = ivec3(decode(key[s]));
+
+    for (int dz=-1; dz<=1; ++dz)
+    for (int dy=-1; dy<=1; ++dy)
+    for (int dx=-1; dx<=1; ++dx)
+    {
+        ivec3 c = cell + ivec3(dx,dy,dz);
+        if (any(lessThan(c,ivec3(0))) ||
+            any(greaterThanEqual(c,uGridResolution))) continue;
+
+        uint k  = encode(c);
+        int  a  = cStart[k];
+        int  b  = cEnd[k];
+        if (a==CELL_EMPTY) continue;
+
+        for (int p=a; p<b; ++p)
+        {
+            uint j = idx[p];
+            if (j==i) continue;
+
+            vec3 rij = pi - P[j].p.xyz;
+            float r2 = dot(rij,rij);
+            if (r2 >= uRadius*uRadius) continue;
+
+            float lj  = lambda[j];
+            float mj  = P[j].meta.x;
+
+            float w   = poly6(r2,uRadius);
+            float sCorr = -uSCorrK * pow(w / w_q, uSCorrN);
+
+            vec3 grad = gradSpiky(rij,uRadius);
+            dPi += (li + lj + sCorr) * (mj/uRestDensity) * grad;
+        }
+    }
+    
+    dPi *= (1.0 / P[i].meta.x);
+    dP[i] = vec4(dPi,0);
+}

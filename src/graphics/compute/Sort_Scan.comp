@@ -1,0 +1,37 @@
+#version 450
+layout (local_size_x = 128) in;
+
+/*  binding = 1  →  bits de entrada (0 / 1)
+    binding = 3  →  scan exclusivo de salida
+*/
+layout(std430, binding = 1) readonly  buffer Bits  { uint inBits[];  };
+layout(std430, binding = 3) writeonly buffer Scan  { uint prefix[]; };
+
+uniform uint uNumElements;
+
+shared uint sData[gl_WorkGroupSize.x];
+
+void main()
+{
+    uint gid = gl_GlobalInvocationID.x;
+    if (gid >= uNumElements) return;
+
+    uint lid = gl_LocalInvocationID.x;
+
+    /* 1. Copiar al shared */
+    sData[lid] = inBits[gid];
+    memoryBarrierShared(); barrier();
+
+    /* 2. Scan inclusivo (upsweep) */
+    for (uint offset = 1u; offset < gl_WorkGroupSize.x; offset <<= 1u)
+    {
+        uint val = (lid >= offset) ? sData[lid - offset] : 0u;
+        barrier();
+        sData[lid] += val;
+        barrier();
+    }
+
+    /* 3. Convertir a exclusivo */
+    uint exclusive = (lid == 0u) ? 0u : sData[lid - 1u];
+    prefix[gid] = exclusive;
+}

@@ -1,0 +1,39 @@
+#version 450
+layout(local_size_x = 128) in;
+
+/*  bindings  --------------------------------------------------------- */
+layout(std430, binding = 3) readonly  buffer Bits { uint bits[]; };
+layout(std430, binding = 4) writeonly buffer Scan { uint scan[]; };
+layout(std430, binding = 5)         buffer Sums { uint sums[]; };
+
+uniform uint uNumElements;
+
+/*  memoria compartida (128 ints)  */
+shared uint sData[gl_WorkGroupSize.x];
+
+void main()
+{
+    uint gid   = gl_GlobalInvocationID.x;
+    uint lid   = gl_LocalInvocationID.x;
+    uint group = gl_WorkGroupID.x;
+
+    /* cargar el bit (0/1) en shared y hacer el exclusivo local -------- */
+    sData[lid] = (gid < uNumElements) ? bits[gid] : 0u;
+    barrier();
+
+    // **Hillis-Steele exclusivo** -------------------------------
+    for (uint off = 1u; off < gl_WorkGroupSize.x; off <<= 1u) {
+        uint t = (lid >= off) ? sData[lid - off] : 0u;
+        barrier();
+        sData[lid] += t;
+        barrier();
+    }
+    uint excl = (lid == 0u) ? 0u : sData[lid - 1u];
+
+    /*  escribir resultados globales ----------------------------------- */
+    if (gid < uNumElements)  scan[gid] = excl;
+
+    /*  guardar la suma total del bloque en `sums[group]` -------------- */
+    if (lid == gl_WorkGroupSize.x - 1u)
+        sums[group] = sData[lid];
+}

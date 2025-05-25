@@ -7,6 +7,9 @@ int main()
     //PBF_System system = PBF_System();
 
     Renderer app(1280, 720, "PBF-Fluid");
+    
+    //app.TestComputeShader();
+    
     app.Run();
 
     return 0;

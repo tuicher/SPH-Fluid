@@ -1,0 +1,38 @@
+// IntegrateAndPredict.comp
+#version 460
+
+layout(local_size_x = 128) in;
+
+struct Particle {
+    vec4 x;      // current position
+    vec4 v;      // velocity
+    vec4 p;      // predicted position
+    vec4 color;
+    vec4 meta;   // mass, index, etc.
+};
+
+layout(std430, binding = 0) buffer Particles {
+    Particle particles[];
+};
+
+uniform float uDeltaTime;
+uniform vec3 uGravity;
+
+void main()
+{
+    uint i = gl_GlobalInvocationID.x;
+    
+    vec3 xi = particles[i].x.xyz;
+    vec3 vi = particles[i].v.xyz;
+    float dt = uDeltaTime;
+
+    // Integrate velocity
+    vi += uGravity * dt;
+
+    // Predict position
+    vec3 pi = xi + vi * dt;
+
+    // Write back
+    particles[i].v.xyz = vi;
+    particles[i].p = vec4(pi, 1.0);
+}

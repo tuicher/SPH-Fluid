@@ -1,0 +1,79 @@
+#version 460 core
+/*  ApplyViscosity.comp
+ *  Δvᵢ = c · Σ ( m / ρⱼ ) · W · (vⱼ − vᵢ)
+ *  y   vᵢ ← vᵢ + Δvᵢ                           */
+struct Particle{ vec4 x; vec4 v; vec4 p; vec4 color; vec4 meta; };
+
+layout(local_size_x = 128) in;
+
+layout(std430, binding = 0 )         buffer Particles   { Particle particles[]; };
+layout(std430, binding = 1 ) readonly buffer CellKeys    { uint   cellKeys[]; };
+layout(std430, binding = 2 ) readonly buffer ParticleIdx { uint   particleIdx[]; };
+layout(std430, binding = 9 ) readonly buffer CellStart   { int    cellStart[]; };
+layout(std430, binding = 10) readonly buffer CellEnd     { int    cellEnd[]; };
+
+layout(std430, binding = 13) readonly buffer Density     { float  rho[]; };
+layout(std430, binding = 14)         buffer DeltaV      { vec4   dVel[]; };
+
+uniform uint  uNumParticles;
+uniform float uMass;
+uniform float uViscosity;            // c
+uniform float uRadius;
+uniform ivec3 uGridResolution;
+uniform vec3  uGridOrigin;
+uniform float uCellSize;
+uniform int INT_MAX;
+
+const float PI = 3.1415926535;
+float W_poly6(float r2, float h) { 
+    float h2 = h*h;
+    float diff = h2 - r2;
+    return (diff <= 0.0) ? 0.0
+         : (315.0 / (64.0*PI*pow(h,9.0))) * diff*diff*diff;
+}
+uint Hash(ivec3 c, ivec3 R){ return uint((c.x*R.y + c.y)*R.z + c.z); }
+
+void main()
+{
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= uNumParticles) return;
+
+    vec3 xi = particles[id].x.xyz;
+    vec3 vi = particles[id].v.xyz;
+    ivec3 cell = ivec3(floor((xi - uGridOrigin) / uCellSize));
+
+    vec3 sum = vec3(0.0);
+
+    for(int dz=-1; dz<=1; ++dz)
+    for(int dy=-1; dy<=1; ++dy)
+    for(int dx=-1; dx<=1; ++dx)
+    {
+        ivec3 nc = cell + ivec3(dx,dy,dz);
+        if(any(lessThan(nc, ivec3(0))) ||
+           any(greaterThanEqual(nc, uGridResolution))) continue;
+
+        uint key = Hash(nc, uGridResolution);
+        int  beg = cellStart[key];
+        int  end = cellEnd[key];
+        if(beg==INT_MAX) continue;
+
+        for(int k=beg; k<end; ++k)
+        {
+            uint j = particleIdx[k];
+            if(j == id) continue;
+            vec3 xj = particles[j].x.xyz;
+            vec3 vj = particles[j].v.xyz;
+
+            vec3 r = xi - xj;
+            float r2 = dot(r,r);
+            float w  = W_poly6(r2, uRadius);
+
+            sum += (uMass / rho[j]) * w * (vj - vi);
+        }
+    }
+    vec3 dV = uViscosity * sum;
+
+    particles[id].v.xyz += dV;   // aplicar
+    particles[id].meta.z = dV.x + dV.y + dV.z;
+    //dVel[id] = vec4(dV, 0.0);    // opcional para depuración
+}
