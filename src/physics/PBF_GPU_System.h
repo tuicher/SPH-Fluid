@@ -15,10 +15,10 @@ class PBF_GPU_System
 {
 private:
 	// Simulation params
-	const GLuint numParticles = 51'200;
+	const GLuint numParticles = 51'200 / 2;
 	const int numRelaxSteps = 50;
 	const int numSubSteps = 5;
-	const int numIter = 3;
+	const int numIter = 4;
 	const float timeStep = 1.0f / 72.f;
 	const float subTimeStep = timeStep / numSubSteps;
 	const double radius = 0.1;
