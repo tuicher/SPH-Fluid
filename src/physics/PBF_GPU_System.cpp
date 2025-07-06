@@ -35,39 +35,58 @@ PBF_GPU_System::~PBF_GPU_System()
 void PBF_GPU_System::Init()
 {
     InitParticles();
-    SetParticlesColors();
+    //SetParticlesColors();
     InitSSBOs();
     InitComputeShaders();
     InitSimulation();
+    
+    //UpdateGrid();
 }
 
 void PBF_GPU_System::InitParticles()
 {
     particles = std::vector<PBF_GPU_Particle>(numParticles);
-    Eigen::Vector3f scale{ 0.5f, 2.0f, 0.5f };
-    Eigen::Vector3f offset{ 0.0f, 6.0f, 0.0f };
+    Eigen::Vector3f scale{ 0.5f, 1.0f, 0.5f };
+    Eigen::Vector3f offset{ 0.5f, 6.0f, 0.5f };
 
     std::cout << "numParticles: " << numParticles << std::endl;
     std::cout << "Mass: " << massPerParticle << std::endl;
 
     GLuint k = 0;
-     
+
     for (int i = 0; i < numParticles; ++i)
     {
-        Eigen::Vector3f p = scale.cwiseProduct(Eigen::Vector3f::Random()) + offset;
+        float mirrorX = 1.f, mirrorZ = 1.f;
         
-        // Genera posiciones dentro de una esfera de radio centrada en (0, 5, 0)
-        //Eigen::Vector3f p = Eigen::Vector3f::Random().normalized();
-        //p *= 0.05f;
-        //p = p + Eigen::Vector3f(0.0f, 5.0f, 0.0f);
+        switch (i % 3)
+        {
+        case 0: mirrorX = -1.0f; mirrorZ = -1.0f; break;
+        case 1: mirrorX =  1.0f; mirrorZ = -1.0f; break;
+        case 2: mirrorX = -1.0f; mirrorZ =  1.0f; break;
+        case 3: mirrorX =  1.0f; mirrorZ =  1.0f; break;
+        }
+        
+        Eigen::Vector3f aux = offset.cwiseProduct(Eigen::Vector3f(mirrorX, 1.0f, mirrorZ));
+        Eigen::Vector3f rand3 = Eigen::Vector3f::Random();
+        Eigen::Vector3f p = scale.cwiseProduct(rand3) + aux;
+
 
         auto& P = particles[i];
         P.x << p, 1.f;
-
         P.v.setZero();
         P.p = P.x;
-        P.color = Eigen::Vector4f( 0.016f, 0.0f, 0.639f, 1.0f);
-        //P.color = Eigen::Vector4f::Random();
+
+        // Asigna color según grupo
+        Eigen::Vector4f color;
+        switch (i % 3)
+        {
+        case 0: color = Eigen::Vector4f(1.f, 0.f, 0.f, 1.0f); break; // Rojo
+        case 1: color = Eigen::Vector4f(0.f, 0.f, 1.f, 1.0f); break; // Azul
+        case 2: color = Eigen::Vector4f(0.f, 1.f, 0.f, 1.0f); break; // Verde
+        case 3: color = Eigen::Vector4f(1.f, 1.f, 0.f, 1.0f); break; // Amarillo
+        }
+        P.color = color;
+
         P.meta << massPerParticle, float(k), 0, 0;
     }
 }
@@ -89,7 +108,7 @@ void PBF_GPU_System::SetParticlesColors()
         // Normalizar (0-1) invertido: 0=arriba, 1=abajo
         float t = (maxY - p.x.y()) / (maxY - minY);
 
-        // HSV → RGB   (Hue 0-300º)
+        // HSV -> RGB   (Hue 0-300º)
         float hue = t * 300.0f;
         float s = 1.0f, v = 1.0f;
 
@@ -415,7 +434,7 @@ void PBF_GPU_System::InitComputeShaders()
     resolveCollisions.setUniform("uNumParticles", numParticles);
     resolveCollisions.setUniform("uMinBound", MinBound);
     resolveCollisions.setUniform("uMaxBound", MaxBound);
-    resolveCollisions.setUniform("uRestitution", 0.95f);
+    resolveCollisions.setUniform("uRestitution", 0.75f);
 
     resetVelocity = ComputeShader("..\\src\\graphics\\compute\\ResetVelocities.comp");
     resetVelocity.use();
@@ -439,8 +458,8 @@ void PBF_GPU_System::Step(float dt)
     integrate.setUniform("uDeltaTime", dt);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
     integrate.dispatch(numWorkGroups);
-    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
+    //glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    
     // 2) Hash
     assign.use();
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
@@ -450,6 +469,7 @@ void PBF_GPU_System::Step(float dt)
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
     // 3) Radix Short
+    #pragma omp parallel for
     for (GLuint bit = 0; bit < 32; ++bit)
     {
         // a) Extract bit
@@ -495,6 +515,7 @@ void PBF_GPU_System::Step(float dt)
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, ssboOffsets);
         rsAddOffset.dispatch(numWorkGroups);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
 #ifdef DEBUG
         if (verbose)
         {
@@ -593,9 +614,11 @@ void PBF_GPU_System::Step(float dt)
                             GL_RED_INTEGER,
                             GL_INT,
                             &initEnd);
+
     findBounds.dispatch(numWorkGroups);
 
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_ATOMIC_COUNTER_BARRIER_BIT);
+
 #ifdef DEBUG
     std::vector<int> start(totCells), end(totCells);
     glGetNamedBufferSubData(ssboCellStart, 0, totCells * sizeof(int), start.data());
@@ -633,7 +656,7 @@ void PBF_GPU_System::Step(float dt)
 #endif // DEBUG 
 
     // 5) PBF Steps
-    
+
     for (int it = 0; it < numIter; ++it)
     {
         // 5.a Compute Lambdas
@@ -744,6 +767,7 @@ void PBF_GPU_System::Step(float dt)
         << "   RMS-error = " << rms << '\n';
 #endif // DEBUG
 
+
     // 6 Update Velocity
     updateVelocity.use();
     updateVelocity.setUniform("uDeltaTime", dt);
@@ -780,7 +804,9 @@ void PBF_GPU_System::Step(float dt)
     resolveCollisions.use();
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssboParticles);
     resolveCollisions.dispatch(numWorkGroups);
-    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    //glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    //PrintTimes();
 }
 
 void PBF_GPU_System::Test(int n)
@@ -817,3 +843,48 @@ void PBF_GPU_System::ResizeCellBuffers(GLuint newTotCells)
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, ssboCellEnd);
 }
 
+void PBF_GPU_System::PrintTimes() const
+{
+    using std::cout;
+    using std::setw;
+    using std::fixed;
+    using std::setprecision;
+
+    const char* sep = "--------------------------------------------------\n";
+    const int wLabel = 24;   // anchura de la columna de etiquetas
+    const int wTime = 9;    // anchura de la columna de números
+
+    cout << '\n' << sep;
+    cout << "   PBF-GPU frame timings (ms)\n" << sep;
+
+    auto print = [&](const char* label, double v)
+        {
+            cout << setw(wLabel) << label << ": "
+                << fixed << setprecision(3) << setw(wTime) << v << '\n';
+        };
+
+    print("CPU UpdateGrid", cpuUpdateGrid_ms);
+    print("GPU Integrate", gpuIntegrate_ms);
+    print("GPU Hash", gpuHash_ms);
+    print("GPU RadixSort", gpuRadixShort_ms);
+    print("GPU FindCellBounds", gpuFindCellBounds_ms);
+    print("GPU PBF", gpuPBF_ms);
+    print("GPU UpdateVelocity", gpuUpdateVelocity_ms);
+    print("GPU XSPH", gpuXSPH_ms);
+    print("GPU Viscosity", gpuViscosity_ms);
+    print("GPU Collisions", gpuCollisions_ms);
+
+    //--- total GPU -----------------------------------------------------------------
+    const double gpuTotal = std::accumulate(
+        std::begin({ gpuIntegrate_ms, gpuHash_ms, gpuRadixShort_ms,
+                    gpuFindCellBounds_ms, gpuPBF_ms, gpuUpdateVelocity_ms,
+                    gpuXSPH_ms, gpuViscosity_ms, gpuCollisions_ms }),
+        std::end({ gpuIntegrate_ms, gpuHash_ms, gpuRadixShort_ms,
+                  gpuFindCellBounds_ms, gpuPBF_ms, gpuUpdateVelocity_ms,
+                  gpuXSPH_ms, gpuViscosity_ms, gpuCollisions_ms }),
+        0.0);
+
+    cout << sep;
+    print("GPU TOTAL", gpuTotal);
+    cout << sep << std::endl;
+}

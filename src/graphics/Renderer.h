@@ -18,6 +18,7 @@
 #include "../support/Loader.h"
 #include "../support/AppInfo.h"
 #include "../support/ImGuiLayer.h"
+#include "../support/gpu_meminfo_defs.h"
 #include "../geometry/Cube.h"
 #include "../geometry/Sphere.h"
 //#include "../physics/SPH_System.h"

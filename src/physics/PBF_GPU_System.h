@@ -2,9 +2,11 @@
 
 #include <glad/glad.h>
 #include <iostream>
+#include <iomanip>
 #include <numeric>
 #include <cfloat>
 #include <algorithm>
+#include <omp.h>
 
 #include "PBF_GPU_Particle.h"
 #include "../graphics/ComputeShader.h"
@@ -15,20 +17,22 @@ class PBF_GPU_System
 {
 private:
 	// Simulation params
-	const GLuint numParticles = 51'200 / 2;
-	const int numRelaxSteps = 50;
-	const int numSubSteps = 5;
-	const int numIter = 4;
-	const float timeStep = 1.0f / 72.f;
+	const GLuint numParticles = 72'000;
+	//const GLuint numParticles = 18'000;
+	const int numRelaxSteps = 200;
+	const int numSubSteps = 3;
+	const int numIter = 2;
+	const float timeStep = 1.0f / 150.0f;
 	const float subTimeStep = timeStep / numSubSteps;
-	const double radius = 0.1;
+	const double radius = 0.07;
 	const double restDensity = 1000.0;
 	const double epsilon = 1e05;
 	const double damping = 0.999;
-	const double viscosity = 0.050;
-	const double totalMass = 3000.0;
+	const double viscosity = 0.010;
+	const double totalMass = 4000.0;
+	//const double totalMass = 1081.0;
 	const double massPerParticle = totalMass / numParticles;
-	const Eigen::Vector3f gravity = Eigen::Vector3f(0, -9.81f, 0);
+	const Eigen::Vector3f gravity = Eigen::Vector3f(0, -9.81f, 9.81f);
 	//Eigen::Vector3f gridOrigin = Eigen::Vector3f(-30.0f, 0.f, -30.0f);
 	Eigen::Vector3f gridOrigin = Eigen::Vector3f( 0.f, 5.f, 0.f);
 	//Eigen::Vector3f gridOrigin = Eigen::Vector3f::Zero();
@@ -38,35 +42,32 @@ private:
 	const GLuint numWorkGroups = (numParticles + workGroup - 1) / workGroup;
 	Eigen::Array3i gridRes = Eigen::Array3i(600,80,600);
 	GLuint totCells = gridRes.prod();
-	const float cellSize = 0.1f;
+	const float cellSize = 0.07f;
 	
-	const Eigen::Vector3f MinBound = Eigen::Vector3f(-1.0f, 0.0f, -1.0f);
-	const Eigen::Vector3f MaxBound = Eigen::Vector3f( 1.0f, 10.0f, 1.0f);
+	const Eigen::Vector3f MinBound = Eigen::Vector3f(-2.0f, 0.0f, -2.0f);
+	const Eigen::Vector3f MaxBound = Eigen::Vector3f( 2.0f, 10.0f, 2.0f);
 	
 	const bool verbose = false;
 
 	std::vector<PBF_GPU_Particle> particles;
 
 	// SSBOs
-	GLuint ssboParticles;		// 0
-	GLuint ssboCellKey;			// 1
-	GLuint ssboParticleIdx;		// 2
+	GLuint ssboParticles;		//  0
+	GLuint ssboCellKey;			//  1
+	GLuint ssboParticleIdx;		//  2
 		// -- Radix Short
-	GLuint ssboBits;			// 3
-	GLuint ssboScan;			// 4
-	GLuint ssboSums;			// 5
-	GLuint ssboOffsets;			// 6
-	GLuint ssboKeysTmp;			// 7
-	GLuint ssboValsTmp;			// 8
-
-	GLuint ssboCellStart;		// 9
+	GLuint ssboBits;			//  3
+	GLuint ssboScan;			//  4
+	GLuint ssboSums;			//  5
+	GLuint ssboOffsets;			//  6
+	GLuint ssboKeysTmp;			//  7
+	GLuint ssboValsTmp;			//  8
+	GLuint ssboCellStart;		//  9
 	GLuint ssboCellEnd;			// 10
-	
 	GLuint ssboLambda;			// 11
 	GLuint ssboDeltaP;			// 12
-
-	GLuint ssboDensity;
-	GLuint ssboDeltaV;
+	GLuint ssboDensity;			// 13
+	GLuint ssboDeltaV;			// 14
 
 	// Compute Shaders
 	ComputeShader integrate;
@@ -100,8 +101,23 @@ private:
 	void InitSSBOs();
 	void InitComputeShaders();
 	void InitSimulation();
-
 	void UpdateGrid();
+
+	void PrintTimes() const;
+
+	// Time measures
+	double cpuUpdateGrid_ms = 0.0;
+
+	double gpuIntegrate_ms = 0.0;
+	double gpuHash_ms = 0.0;
+	double gpuRadixShort_ms = 0.0;
+	double gpuFindCellBounds_ms = 0.0;
+	double gpuPBF_ms = 0.0;
+	double gpuUpdateVelocity_ms = 0.0;
+	double gpuXSPH_ms = 0.0;
+	double gpuViscosity_ms = 0.0;
+	double gpuCollisions_ms = 0.0;
+
 
 public:
 	PBF_GPU_System();

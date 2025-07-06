@@ -27,14 +27,6 @@ void main()
 }
 )";
 
-#define NUM_PARTICLES 30000000
-
-struct Particule
-{
-    EIGEN_ALIGN16 Eigen::Vector4f pos;
-    EIGEN_ALIGN16 Eigen::Vector4f base;
-    EIGEN_ALIGN16 Eigen::Vector4f color;
-};
 
 Renderer::Renderer(int width, int height, const char* title)
     : m_Width(width)
@@ -50,9 +42,12 @@ Renderer::Renderer(int width, int height, const char* title)
         // Manejar error
     }
 
-    m_AppInfo.fpsSamples.resize(256, 0.0f);  // 256 muestras
+    m_AppInfo.fpsSamples.resize(256, 0.0f);
     m_AppInfo.maxFPS = 144.0f;
     m_AppInfo.fov = 45.0f;
+    m_AppInfo.vramSamples.resize(256, 0.0f);
+    m_AppInfo.vramSampleIdx = 0;
+
 
     InitOpenGL();
     InitScene();
@@ -108,6 +103,23 @@ void Renderer::InitOpenGL()
         return;
     }
 
+    if (glfwExtensionSupported("GL_NVX_gpu_memory_info"))
+    {
+        GLint totalKB = 0;
+        glGetIntegerv(GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX, &totalKB);
+        m_AppInfo.totalVRAM   = totalKB / 1024.0f;      // MBd
+        m_AppInfo.maxVRAMPlot = m_AppInfo.totalVRAM;    // misma escala
+    }
+    else if (glfwExtensionSupported("GL_ATI_meminfo"))
+    {
+        GLint freeKB[4] = {};
+        glGetIntegerv(GL_TEXTURE_FREE_MEMORY_ATI, freeKB);
+        // Para ATI no hay total, así que marca un máximo “generoso”
+        m_AppInfo.totalVRAM   = 0.0f;
+        m_AppInfo.maxVRAMPlot = 12000.0f; // p. ej. 12 GB
+    }
+
+
     // glViewport(0, 0, m_Width, m_Height);  // Se ajustará en el callback
     glEnable(GL_DEPTH_TEST);
 
@@ -137,7 +149,7 @@ void Renderer::InitScene()
     m_Cube = std::make_unique<Cube>();
     m_Cube->Setup();
 
-    m_Sphere = std::make_unique<Sphere>(0.025f, 16, 32);
+    m_Sphere = std::make_unique<Sphere>(0.025f, 8, 16);
     m_Sphere->Setup();
 
 }
@@ -164,13 +176,34 @@ void Renderer::Run()
         float fps = 1.0f / ImGui::GetIO().DeltaTime;
         m_AppInfo.fpsSamples[m_AppInfo.sampleIdx] = fps;
         m_AppInfo.sampleIdx = (m_AppInfo.sampleIdx + 1) % m_AppInfo.fpsSamples.size();
+
+        /* ==== VRAM ==== */
+        GLint freeKB = 0;
+        if (glfwExtensionSupported("GL_NVX_gpu_memory_info"))
+        {
+            glGetIntegerv(GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &freeKB);
+            float usedMB = m_AppInfo.totalVRAM - (freeKB / 1024.0f);
+            m_AppInfo.vramSamples[m_AppInfo.vramSampleIdx] = usedMB;
+        }
+        else if (glfwExtensionSupported("GL_ATI_meminfo"))
+        {
+            GLint freeInfo[4] = {};
+            glGetIntegerv(GL_TEXTURE_FREE_MEMORY_ATI, freeInfo);
+            float freeMB = freeInfo[0] / 1024.0f;
+            float usedMB = m_AppInfo.maxVRAMPlot - freeMB;
+            m_AppInfo.vramSamples[m_AppInfo.vramSampleIdx] = usedMB;
+        }
+
+        m_AppInfo.vramSampleIdx = (m_AppInfo.vramSampleIdx + 1) % m_AppInfo.vramSamples.size();
+
         m_ImGuiLayer.ShowInfoPanel(m_AppInfo);
         m_Camera.SetFOV(m_AppInfo.fov);
 
         glClearColor(0.278f, 0.278f, 0.278f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        if (buttonState == 1) {
+        if (buttonState == 1)
+        {
             float newXRot = m_Camera.GetRotation().x() + ((xRotLength - m_Camera.GetRotation().x()) * 0.1f);
             float newYRot = m_Camera.GetRotation().y() + ((yRotLength - m_Camera.GetRotation().y()) * 0.1f);
             m_Camera.SetRotation(Eigen::Vector2f(newXRot, newYRot));
@@ -260,6 +293,14 @@ void Renderer::HandleKeyCallback(GLFWwindow* window, int key, int scancode, int 
         }
         if (key == GLFW_KEY_E) {
             m_Camera.Translate(Eigen::Vector3f( 0.0f, D_TRANSLATION, 0.0f));
+        }
+        if (key == GLFW_KEY_R)
+        {
+            enableSimulation = false;
+
+            std::cout << "RESETING SYSTEM" << std::endl;
+
+            m_PBFGPU_System.Init();
         }
         if (key == GLFW_KEY_SPACE) {
             // Ejemplo: invertir sistema en marcha/parada

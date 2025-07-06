@@ -64,6 +64,27 @@ void ImGuiLayer::ShowInfoPanel(AppInfo& info)
         );
     }
 
+    /* === VRAM === */
+    if (!info.vramSamples.empty())
+    {
+        int lastIdx = (info.vramSampleIdx == 0) ? info.vramSamples.size() - 1
+            : info.vramSampleIdx - 1;
+        float currentVRAM = info.vramSamples[lastIdx];
+
+        ImGui::Text("VRAM usada: %.1f / %.1f MB",
+            currentVRAM, info.maxVRAMPlot);
+
+        ImGui::PlotLines("VRAM (MB)",
+            info.vramSamples.data(),
+            static_cast<int>(info.vramSamples.size()),
+            info.vramSampleIdx,
+            nullptr,
+            0.0f,
+            info.maxVRAMPlot,
+            ImVec2(0, 80));
+    }
+
+
     ImGui::End();
 }
 
