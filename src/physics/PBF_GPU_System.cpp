@@ -35,7 +35,7 @@ PBF_GPU_System::~PBF_GPU_System()
 void PBF_GPU_System::Init()
 {
     InitParticles();
-    //SetParticlesColors();
+    SetParticlesColors();
     InitSSBOs();
     InitComputeShaders();
     InitSimulation();
@@ -46,8 +46,8 @@ void PBF_GPU_System::Init()
 void PBF_GPU_System::InitParticles()
 {
     particles = std::vector<PBF_GPU_Particle>(numParticles);
-    Eigen::Vector3f scale{ 0.5f, 1.0f, 0.5f };
-    Eigen::Vector3f offset{ 0.5f, 6.0f, 0.5f };
+    Eigen::Vector3f scale{ .5f, 2.0f, .5f };
+    Eigen::Vector3f offset{ 0.f, 6.0f, 0.f };
 
     std::cout << "numParticles: " << numParticles << std::endl;
     std::cout << "Mass: " << massPerParticle << std::endl;
@@ -58,12 +58,12 @@ void PBF_GPU_System::InitParticles()
     {
         float mirrorX = 1.f, mirrorZ = 1.f;
         
-        switch (i % 3)
+        switch (i % 4)
         {
         case 0: mirrorX = -1.0f; mirrorZ = -1.0f; break;
-        case 1: mirrorX =  1.0f; mirrorZ = -1.0f; break;
+        case 1: mirrorX =  1.0f; mirrorZ =  1.0f; break;
         case 2: mirrorX = -1.0f; mirrorZ =  1.0f; break;
-        case 3: mirrorX =  1.0f; mirrorZ =  1.0f; break;
+        case 3: mirrorX =  1.0f; mirrorZ = -1.0f; break;
         }
         
         Eigen::Vector3f aux = offset.cwiseProduct(Eigen::Vector3f(mirrorX, 1.0f, mirrorZ));
@@ -78,7 +78,7 @@ void PBF_GPU_System::InitParticles()
 
         // Asigna color según grupo
         Eigen::Vector4f color;
-        switch (i % 3)
+        switch (i % 4)
         {
         case 0: color = Eigen::Vector4f(1.f, 0.f, 0.f, 1.0f); break; // Rojo
         case 1: color = Eigen::Vector4f(0.f, 0.f, 1.f, 1.0f); break; // Azul
@@ -443,6 +443,8 @@ void PBF_GPU_System::InitComputeShaders()
 
 void PBF_GPU_System::Step()
 {
+    //UpdateGrid();
+
     for (int i = 0; i < numSubSteps; i++)
     {
         Step(subTimeStep);
