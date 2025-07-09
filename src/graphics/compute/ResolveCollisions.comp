@@ -12,8 +12,8 @@ struct Particle {
 layout(std430, binding = 0) buffer ParticlesSSBO { Particle particles[]; };
 
 uniform uint  uNumParticles;
-uniform vec3  uMinBound;        // ej. (-30, 0, -30)
-uniform vec3  uMaxBound;        // ej. ( 30, 8,  30)
+uniform vec3  uMinBound;
+uniform vec3  uMaxBound;
 uniform float uRestitution;     // 0.0 = inelástico, 1.0 = elástico
 
 void main()
