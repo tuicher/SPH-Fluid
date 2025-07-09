@@ -21,5 +21,5 @@ void main()
 {
     uint id = gl_GlobalInvocationID.x;
     if (id < uNumParticles)
-        particles[id].v = vec4(0.0);
+        particles[id].v = vec4( 0.0, 0.0, 0.0, 0.0);
 }
