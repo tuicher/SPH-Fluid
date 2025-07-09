@@ -12,12 +12,13 @@
 #include "../graphics/ComputeShader.h"
 
 //#define DEBUG
+//#define AABB
 
 class PBF_GPU_System
 {
 private:
 	// Simulation params
-	const GLuint numParticles = 50'000;
+	const GLuint numParticles = 75'000;
 	//const GLuint numParticles = 18'000;
 	const int numRelaxSteps = 200;
 	const int numSubSteps = 3;
@@ -33,9 +34,7 @@ private:
 	//const double totalMass = 1081.0;
 	const double massPerParticle = totalMass / numParticles;
 	const Eigen::Vector3f gravity = Eigen::Vector3f(0.f, -9.81f, 0.f);
-	//Eigen::Vector3f gridOrigin = Eigen::Vector3f(-30.0f, 0.f, -30.0f);
 	Eigen::Vector3f gridOrigin = Eigen::Vector3f( 0.f, 5.f, 0.f);
-	//Eigen::Vector3f gridOrigin = Eigen::Vector3f::Zero();
 	
 	// Kernels Consts
 	const GLuint workGroup = 128;
@@ -43,10 +42,13 @@ private:
 	Eigen::Array3i gridRes = Eigen::Array3i(600,80,600);
 	GLuint totCells = gridRes.prod();
 	const float cellSize = 0.1f;
-	
+#ifdef AABB
 	const Eigen::Vector3f MinBound = Eigen::Vector3f(-2.f, 0.0f, -2.f);
 	const Eigen::Vector3f MaxBound = Eigen::Vector3f( 2.f, 30.0f, 2.f);
-	
+#else
+	const Eigen::Vector3f SphereCenter = Eigen::Vector3f(0.f, 1.f, 0.f);
+	const float SphereRadius = 2.f;
+#endif	
 	const bool verbose = false;
 
 	std::vector<PBF_GPU_Particle> particles;

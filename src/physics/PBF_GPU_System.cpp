@@ -46,8 +46,8 @@ void PBF_GPU_System::Init()
 void PBF_GPU_System::InitParticles()
 {
     particles = std::vector<PBF_GPU_Particle>(numParticles);
-    Eigen::Vector3f scale{ .5f, 2.0f, .5f };
-    Eigen::Vector3f offset{ 0.f, 6.0f, 0.f };
+    Eigen::Vector3f scale{ 1.f, 1.f, 1.f };
+    Eigen::Vector3f offset{ 0.f, 1.5f, 0.f };
 
     std::cout << "numParticles: " << numParticles << std::endl;
     std::cout << "Mass: " << massPerParticle << std::endl;
@@ -58,7 +58,7 @@ void PBF_GPU_System::InitParticles()
     {
         float mirrorX = 1.f, mirrorZ = 1.f;
         
-        switch (i % 4)
+        switch (i % 1)
         {
         case 0: mirrorX = -1.0f; mirrorZ = -1.0f; break;
         case 1: mirrorX =  1.0f; mirrorZ =  1.0f; break;
@@ -429,13 +429,22 @@ void PBF_GPU_System::InitComputeShaders()
     // 8) ?
 
     // 9) Resolve Collisions
+#ifdef AABB
     resolveCollisions = ComputeShader("..\\src\\graphics\\compute\\ResolveCollisions.comp");
     resolveCollisions.use();
     resolveCollisions.setUniform("uNumParticles", numParticles);
     resolveCollisions.setUniform("uMinBound", MinBound);
     resolveCollisions.setUniform("uMaxBound", MaxBound);
     resolveCollisions.setUniform("uRestitution", 0.75f);
-
+#else
+    resolveCollisions = ComputeShader("..\\src\\graphics\\compute\\ResolveCollisions_Sphere.comp");
+    resolveCollisions.use();
+    resolveCollisions.setUniform("uNumParticles", numParticles);
+    resolveCollisions.setUniform("uSphereCenter", SphereCenter);
+    resolveCollisions.setUniform("uSphereRadius", SphereRadius);
+    resolveCollisions.setUniform("uRestitution", 0.999999995f);
+#endif // AABB
+    // Reset Velocity
     resetVelocity = ComputeShader("..\\src\\graphics\\compute\\ResetVelocities.comp");
     resetVelocity.use();
     resetVelocity.setUniform("uNumParticles", numParticles);
